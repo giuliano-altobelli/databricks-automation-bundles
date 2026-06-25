@@ -1,0 +1,6 @@
+version: 1
+name: platform-governance
+owner:
+  team: platform-governance
+review:
+  policy: owner-approval

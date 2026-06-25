@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/bundle.schema.json",
+  "title": "DAB Monorepo Bundle Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "type", "owner", "review", "targets", "depends_on"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["team"],
+      "properties": {
+        "team": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["policy"],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dev", "uat", "prod"],
+      "properties": {
+        "dev": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["mode", "default"],
+          "properties": {
+            "mode": {
+              "const": "development"
+            },
+            "default": {
+              "const": true
+            }
+          }
+        },
+        "uat": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["mode", "ci_only"],
+          "properties": {
+            "mode": {
+              "const": "validation"
+            },
+            "ci_only": {
+              "const": true
+            }
+          }
+        },
+        "prod": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["mode", "ci_only"],
+          "properties": {
+            "mode": {
+              "const": "production"
+            },
+            "ci_only": {
+              "const": true
+            }
+          }
+        }
+      }
+    },
+    "depends_on": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundles", "libs"],
+      "properties": {
+        "bundles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "libs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

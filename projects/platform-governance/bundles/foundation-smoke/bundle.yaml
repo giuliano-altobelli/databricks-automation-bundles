@@ -1,0 +1,20 @@
+version: 1
+name: foundation-smoke
+type: generic
+owner:
+  team: platform-governance
+review:
+  policy: owner-approval
+targets:
+  dev:
+    mode: development
+    default: true
+  uat:
+    mode: validation
+    ci_only: true
+  prod:
+    mode: production
+    ci_only: true
+depends_on:
+  bundles: []
+  libs: []
