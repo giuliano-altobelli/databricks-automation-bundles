@@ -1,4 +1,6 @@
-# Architecture
+# Imported Platform Context from `databricks-infra`
+
+> Imported June 2026, as-is, from the [databricks-infra](https://github.com/giuliano-altobelli/databricks-infra.git) Terraform repository to provide platform context for this DAB monorepo. File paths (for example `infra/aws/dbx/databricks/us-west-1/identify.tf`) and relative design-doc links (for example `docs/design-docs/unity-catalog.md`) refer to locations in `databricks-infra`, not this repository. This document is not the architecture of this monorepo.
 
 ## Unity Catalog (single workspace, Option 1)
 

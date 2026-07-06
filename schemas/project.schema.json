@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/project.schema.json",
+  "title": "DAB Monorepo Project Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "owner", "review"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["team"],
+      "properties": {
+        "team": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["policy"],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
