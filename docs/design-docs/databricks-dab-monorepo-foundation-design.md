@@ -1,10 +1,10 @@
 # Databricks DAB Monorepo Foundation Design
 
-Status: draft for feedback
+Status: accepted (2026-07-06)
 
-This design proposes a lightweight foundation for a future Databricks Declarative Automation Bundles monorepo. The monorepo is outside this Terraform repository and is intended to support many projects over time. Each project may contain multiple Databricks bundles for dbt, apps, MLflow, Spark streaming, Auto Loader, UDFs, and other Databricks-native workloads.
+This design defines the lightweight foundation for this repository, the Databricks Declarative Automation Bundles monorepo. Platform controls consumed here are owned by the external [databricks-infra](https://github.com/giuliano-altobelli/databricks-infra.git) Terraform repository. The monorepo is intended to support many projects over time. Each project may contain multiple Databricks bundles for dbt, apps, MLflow, Spark streaming, Auto Loader, UDFs, and other Databricks-native workloads.
 
-The phase-1 design intentionally starts with one dogfood resource: Databricks attribute-based access control for Jira project-key row access. The ABAC governance model is defined in [Databricks ABAC Governance Design Doc](./databricks-abac-governance-design.md). This document defines the monorepo foundation needed to support that first slice and grow safely later.
+The phase-1 design intentionally starts with one dogfood resource: Databricks attribute-based access control for Jira project-key row access. The ABAC governance model is defined in [Databricks ABAC Governance Design Doc](./databricks-abac-governance-design.md). This document defines the monorepo foundation needed to support that first slice and grow safely later. The [Phasing](#phasing) section records how phase 1 is delivered in slices.
 
 # Goals
 
@@ -17,11 +17,37 @@ The phase-1 design intentionally starts with one dogfood resource: Databricks at
 - Require lightweight promotion evidence for production from the beginning.
 - Keep implementation details out of this foundation design when they belong in a focused bundle spec.
 
+# Phasing
+
+Phase 1 is delivered in two slices. This document remains the target design for all of phase 1; this section records delivery status.
+
+## Phase 1a: Repository Foundation (shipped 2026-06-25)
+
+Tracked in [Databricks DAB Monorepo Foundation Phase 1](../implementation/databricks-dab-monorepo-foundation-phase-1.md). The tracker predates this phasing split and is titled "Phase 1".
+
+Shipped:
+
+- root `uv` tooling environment and `prek.toml`
+- `repoctl` with `discover`, `validate`, and `changed`
+- project and bundle metadata schemas and validation
+- generic project and bundle templates
+- one inert sample project and bundle metadata fixture
+- offline tests and a recorded local verification log
+
+## Phase 1b: Enforcement and Dogfood (pending)
+
+- PR-validation GitHub Actions workflow: `uv` bootstrap, `prek`, `repoctl validate`, and changed-bundle computation
+- `repoctl evidence check` for promotion-decision evidence
+- ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access/` with its focused `SPEC.md`
+- concrete `abac-access-map` bundle template
+
+UAT and production deployment workflows and CI evidence artifact upload follow after phase 1b.
+
 # Ownership Boundary
 
-The future DAB monorepo consumes platform controls owned by this Terraform repository.
+This DAB monorepo consumes platform controls owned by the external [databricks-infra](https://github.com/giuliano-altobelli/databricks-infra.git) Terraform repository.
 
-Terraform owns stable platform controls:
+The `databricks-infra` Terraform repository owns stable platform controls:
 
 - `prod_security` and its governance schemas
 - governed tag definitions and allowed values
@@ -30,7 +56,7 @@ Terraform owns stable platform controls:
 - workspace and account setup
 - stable ABAC policy definitions
 
-The DAB monorepo owns delivery and validation around those controls:
+This DAB monorepo owns delivery and validation around those controls:
 
 - Databricks bundle assets
 - UDF source
@@ -39,7 +65,7 @@ The DAB monorepo owns delivery and validation around those controls:
 - GitHub Actions CI/CD
 - run evidence
 
-This boundary prevents the DAB monorepo from becoming a second infrastructure control plane while still letting it dogfood ABAC quickly.
+This boundary prevents this DAB monorepo from becoming a second infrastructure control plane while still letting it dogfood ABAC quickly.
 
 # Repository Structure
 
@@ -91,7 +117,7 @@ Recommended phase-1 shape:
 
 `databricks.yml` remains the native Databricks bundle definition. `project.yaml` and `bundle.yaml` are monorepo governance metadata used by `repoctl` and GitHub Actions.
 
-`templates/README.md` explains the approved scaffold path. Phase 1 includes a concrete `abac-access-map` template. Other future bundle templates are intentionally not defined in this design.
+`templates/README.md` explains the approved scaffold path. Phase 1a ships generic project and bundle templates; phase 1b adds the concrete `abac-access-map` template. Other future bundle templates are intentionally not defined in this design.
 
 # Dependency Model
 
@@ -179,7 +205,7 @@ Phase-1 commands:
 uv run repoctl discover
 uv run repoctl validate
 uv run repoctl changed --base origin/main
-uv run repoctl evidence check --bundle <path> --target prod
+uv run repoctl evidence check --bundle <path> --target prod  # phase 1b
 ```
 
 Initial responsibilities:
@@ -328,9 +354,9 @@ Time targets, such as cold bootstrap under 10 minutes or pull request feedback u
 
 # Out of Scope
 
-- Implementing the monorepo.
+- Implementing the monorepo in this document; delivery is tracked in `docs/implementation/` and summarized in [Phasing](#phasing).
 - Creating live Databricks resources.
-- Migrating this Terraform repo.
+- Migrating the `databricks-infra` Terraform repository into this monorepo.
 - Designing every Databricks bundle resource type.
 - Final physical DDL for Jira access maps.
 - Final ABAC policy SQL.
@@ -342,6 +368,8 @@ Time targets, such as cold bootstrap under 10 minutes or pull request feedback u
 
 # References
 
-- [Architecture](../../ARCHITECTURE.md)
+- [Imported Platform Context from `databricks-infra`](../../ARCHITECTURE.md)
+- [databricks-infra Terraform repository](https://github.com/giuliano-altobelli/databricks-infra.git)
 - [Databricks ABAC Governance Design Doc](./databricks-abac-governance-design.md)
 - [ADR 0001: Use `prod_security` as the Platform Governance Catalog](../adr/0001-platform-governance-catalog.md)
+- [Phase 1a Implementation Tracker](../implementation/databricks-dab-monorepo-foundation-phase-1.md)
