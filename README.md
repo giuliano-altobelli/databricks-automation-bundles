@@ -26,12 +26,18 @@ Deferred:
 
 ## Bootstrap
 
+From the repository root, a new developer's Day 0 bootstrap is:
+
 ```bash
 uv sync --locked --all-extras --dev
 uv run prek -c prek.toml install
 ```
 
+No Databricks workspace credentials or Databricks CLI setup are required for this Phase 1 foundation bootstrap.
+
 ## Local Verification
+
+After bootstrap, run the local verification loop with:
 
 ```bash
 uv run pytest -q

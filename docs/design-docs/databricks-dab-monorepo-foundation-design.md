@@ -36,6 +36,7 @@ Shipped:
 
 ## Phase 1b: Enforcement and Dogfood (pending)
 
+- root `justfile` with `just bootstrap` and `just verify` wrappers over the raw `uv` commands, keeping raw `uv` fallback documented
 - PR-validation GitHub Actions workflow: `uv` bootstrap, `prek`, `repoctl validate`, and changed-bundle computation
 - `repoctl evidence check` for promotion-decision evidence
 - ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access/` with its focused `SPEC.md`
