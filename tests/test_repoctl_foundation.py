@@ -169,6 +169,16 @@ def test_classify_changed_files_marks_root_tooling_as_all_bundles(tmp_path: Path
     assert result.changed_bundles == [bundle_root]
 
 
+def test_classify_changed_files_marks_justfile_as_all_bundles(tmp_path: Path) -> None:
+    bundle_root = write_foundation_fixture(tmp_path)
+
+    result = classify_changed_files(tmp_path, ["justfile"])
+
+    assert result.docs_only is False
+    assert result.affects_all_bundles is True
+    assert result.changed_bundles == [bundle_root]
+
+
 def test_repoctl_cli_discover_outputs_json(tmp_path: Path) -> None:
     write_foundation_fixture(tmp_path)
 

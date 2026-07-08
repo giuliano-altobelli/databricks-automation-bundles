@@ -29,6 +29,12 @@ Deferred:
 From the repository root, a new developer's Day 0 bootstrap is:
 
 ```bash
+just bootstrap
+```
+
+If `just` is unavailable, run the underlying commands directly:
+
+```bash
 uv sync --locked --all-extras --dev
 uv run prek -c prek.toml install
 ```
@@ -38,6 +44,12 @@ No Databricks workspace credentials or Databricks CLI setup are required for thi
 ## Local Verification
 
 After bootstrap, run the local verification loop with:
+
+```bash
+just verify
+```
+
+If `just` is unavailable, run the underlying commands directly:
 
 ```bash
 uv run pytest -q
