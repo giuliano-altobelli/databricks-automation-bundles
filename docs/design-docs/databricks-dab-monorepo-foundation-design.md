@@ -23,7 +23,7 @@ Phase 1 is delivered in two slices. This document remains the target design for 
 
 ## Phase 1a: Repository Foundation (shipped 2026-06-25)
 
-Tracked in [Databricks DAB Monorepo Foundation Phase 1](../implementation/databricks-dab-monorepo-foundation-phase-1.md). The tracker predates this phasing split and is titled "Phase 1".
+Tracked in [Databricks DAB Monorepo Foundation Phase 1](../exec-plans/active/databricks-dab-monorepo-foundation-phase-1.md). The tracker predates this phasing split and is titled "Phase 1".
 
 Shipped:
 
@@ -356,7 +356,7 @@ Time targets, such as cold bootstrap under 10 minutes or pull request feedback u
 
 # Out of Scope
 
-- Implementing the monorepo in this document; delivery is tracked in `docs/implementation/` and summarized in [Phasing](#phasing).
+- Implementing the monorepo in this document; delivery is tracked in `docs/exec-plans/` and summarized in [Phasing](#phasing).
 - Creating live Databricks resources.
 - Migrating the `databricks-infra` Terraform repository into this monorepo.
 - Designing every Databricks bundle resource type.
@@ -374,4 +374,4 @@ Time targets, such as cold bootstrap under 10 minutes or pull request feedback u
 - [databricks-infra Terraform repository](https://github.com/giuliano-altobelli/databricks-infra.git)
 - [Databricks ABAC Governance Design Doc](./databricks-abac-governance-design.md)
 - [ADR 0001: Use `prod_security` as the Platform Governance Catalog](../adr/0001-platform-governance-catalog.md)
-- [Phase 1a Implementation Tracker](../implementation/databricks-dab-monorepo-foundation-phase-1.md)
+- [Phase 1a Implementation Tracker](../exec-plans/active/databricks-dab-monorepo-foundation-phase-1.md)

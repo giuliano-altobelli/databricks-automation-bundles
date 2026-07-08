@@ -241,8 +241,10 @@ Before moving on, a reader should be able to answer these questions from the pat
 | --- | --- | --- |
 | `projects/platform-governance/` | project | Platform governance owns and reviews this area. |
 | `projects/platform-governance/project.yaml` | project metadata | The repo can validate the project name, owner, and review policy. |
-| `projects/platform-governance/bundles/foundation-smoke/` | bundle | The repo has one bundle-shaped unit under the project. |
+| `projects/platform-governance/bundles/foundation-smoke/` | bundle | One of two metadata-backed bundles under the platform governance project. |
 | `projects/platform-governance/bundles/foundation-smoke/bundle.yaml` | bundle metadata | The repo can validate bundle ownership, targets, and dependencies. |
+| `projects/platform-governance/bundles/abac-jira-project-access/` | bundle | The ABAC dogfood bundle under the platform governance project. |
+| `projects/platform-governance/bundles/abac-jira-project-access/repoctl.bundle.yaml` | bundle metadata | The repo can validate native-bundle repoctl metadata without confusing the Databricks CLI. |
 | `tools/repoctl/` | root tooling | Changes here affect repo-wide discovery, validation, or change classification. |
 | `schemas/` | metadata contracts | Changes here affect what project and bundle metadata is valid. |
 | `templates/` | scaffolding | Changes here affect how future projects and bundles are created. |
@@ -1303,7 +1305,7 @@ The shipped pull request workflow is:
 
 The Phase 1b delivery also includes:
 
-- `repoctl evidence check --bundle <path> --target prod`
+- `repoctl evidence check --bundle <path> --target prod --evidence <run-dir>`
 - documentation-grade evidence schemas in `schemas/evidence/`
 - the ABAC dogfood bundle
 - the concrete `abac-access-map` template
@@ -1348,7 +1350,7 @@ GitHub Actions artifact:
 
 Phase 1a does not generate this artifact layout yet. It only records the design expectation.
 
-The repository may later add lightweight schemas or documentation for evidence shape. CI-generated evidence files should not be checked in.
+Phase 1b ships documentation-grade schemas under `schemas/evidence/` for the evidence shape. CI-generated evidence files should not be checked in.
 
 ### What CI/CD Owns
 

@@ -96,7 +96,7 @@ Task-level entries:
 - 2026-07-08: Tasks 7-10 verification: ABAC dogfood metadata, SQL source, fail-closed contract fixtures, and inert `databricks.yml` tests passed.
 - 2026-07-08: Task 11 verification: PR-validation workflow parity tests passed locally; no push, PR, deploy, or remote workflow run.
 - 2026-07-08: Task 12 verification: `templates/bundles/abac-access-map/` materialization test passed.
-- 2026-07-08: Task 13 verification: `uv run pytest -q tests/test_phase1b_docs_reconciliation.py` passed with 5 tests after first failing red against stale Phase 1b docs; `uv run pytest -q` passed with 61 tests; `uv run ruff check tools tests` passed.
+- 2026-07-08: Task 13 verification: `uv run pytest -q tests/test_phase1b_docs_reconciliation.py` passed with 13 tests after failing red against stale Phase 1b docs; `uv run pytest -q` passed with 69 tests; `uv run ruff check tests/test_phase1b_docs_reconciliation.py` passed.
 
 ## Self-Review Checklist
 

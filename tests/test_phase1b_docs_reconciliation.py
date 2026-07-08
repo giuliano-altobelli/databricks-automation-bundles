@@ -35,6 +35,16 @@ def section_between(document: str, start: str, end: str) -> str:
     return document[start_index:end_index]
 
 
+def test_design_doc_links_to_existing_phase_1a_tracker() -> None:
+    design = text(DESIGN_DOC)
+    phase_1a_tracker = "../exec-plans/active/databricks-dab-monorepo-foundation-phase-1.md"
+
+    assert "../implementation/databricks-dab-monorepo-foundation-phase-1.md" not in design
+    assert "docs/implementation/" not in design
+    assert phase_1a_tracker in design
+    assert (DESIGN_DOC.parent / phase_1a_tracker).resolve().exists()
+
+
 def test_readme_summarizes_phase_1b_delivery_and_metadata_convention() -> None:
     readme = text(README)
 
@@ -101,6 +111,59 @@ def test_shipped_doc_reconciles_phase_1b_without_claiming_deployments() -> None:
     )
     assert "Phase 1b is still pending" not in shipped
     assert "Phase 1b should add" not in shipped
+
+
+def test_shipped_inventory_lists_current_platform_governance_bundles() -> None:
+    shipped = text(SHIPPED_DOC)
+    inventory = section_between(
+        shipped,
+        "### Repo-Shape Self-Check",
+        "If that table makes sense",
+    )
+
+    assert_contains_all(
+        inventory,
+        [
+            "`projects/platform-governance/bundles/foundation-smoke/`",
+            "`projects/platform-governance/bundles/abac-jira-project-access/`",
+            "`projects/platform-governance/bundles/abac-jira-project-access/repoctl.bundle.yaml`",
+            "One of two metadata-backed bundles under the platform governance project.",
+            "The repo can validate native-bundle repoctl metadata without confusing "
+            "the Databricks CLI.",
+        ],
+    )
+    assert "The repo has one bundle-shaped unit under the project." not in shipped
+
+
+def test_evidence_check_cli_examples_include_required_evidence_argument() -> None:
+    full_command = "repoctl evidence check --bundle <path> --target prod --evidence <run-dir>"
+    checked_docs = [
+        text(README),
+        text(DESIGN_DOC),
+        text(SHIPPED_DOC),
+        text(TRACKER),
+    ]
+
+    for document in checked_docs:
+        for line in document.splitlines():
+            if "repoctl evidence check --bundle <path> --target prod" in line:
+                assert full_command in line
+
+    assert full_command in text(SHIPPED_DOC)
+
+
+def test_shipped_evidence_section_documents_schemas_as_delivered() -> None:
+    shipped = text(SHIPPED_DOC)
+    evidence = section_between(shipped, "### Evidence Contract", "### What CI/CD Owns")
+
+    assert_contains_all(
+        evidence,
+        [
+            "Phase 1b ships documentation-grade schemas under `schemas/evidence/`",
+            "CI-generated evidence files should not be checked in.",
+        ],
+    )
+    assert "may later add lightweight schemas or documentation" not in evidence
 
 
 def test_shipped_template_section_lists_neutral_and_abac_templates() -> None:
@@ -202,4 +265,6 @@ def test_phase_1b_tracker_marks_tasks_through_docs_reconciliation_complete() -> 
         assert f"- [x] {task_number}." in tracker
     assert "- [ ] 14." in tracker
     assert "Task 13 verification:" in tracker
+    assert "passed with 13 tests" in tracker
+    assert "passed with 5 tests" not in tracker
     assert "YYYY-MM-DD: Task 13 verification" not in tracker
