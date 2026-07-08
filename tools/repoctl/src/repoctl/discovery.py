@@ -19,6 +19,7 @@ class Bundle:
     name: str
     project: str
     path: Path
+    metadata_path: Path
     metadata: dict[str, Any]
 
 
@@ -68,8 +69,8 @@ def discover(root: Path) -> DiscoveryResult:
             continue
 
         for bundle_dir in sorted(path for path in bundles_root.iterdir() if path.is_dir()):
-            bundle_file = bundle_dir / "bundle.yaml"
-            if not bundle_file.exists():
+            bundle_file = _bundle_metadata_path(bundle_dir)
+            if bundle_file is None:
                 continue
             bundle_metadata = load_metadata(bundle_file)
             bundle_name = str(bundle_metadata.get("name") or bundle_dir.name)
@@ -78,8 +79,17 @@ def discover(root: Path) -> DiscoveryResult:
                     name=bundle_name,
                     project=project_name,
                     path=bundle_dir,
+                    metadata_path=bundle_file,
                     metadata=bundle_metadata,
                 )
             )
 
     return DiscoveryResult(projects=projects, bundles=bundles)
+
+
+def _bundle_metadata_path(bundle_dir: Path) -> Path | None:
+    for filename in ("repoctl.bundle.yaml", "bundle.yaml"):
+        path = bundle_dir / filename
+        if path.exists():
+            return path
+    return None

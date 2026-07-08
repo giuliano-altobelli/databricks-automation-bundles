@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 from repoctl.discovery import discover
+from repoctl.metadata import load_metadata
 from repoctl.validation import validate_repo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,8 @@ SQL_ROOT = BUNDLE_ROOT / "sql"
 ACCESS_MAP_DDL = SQL_ROOT / "access_map_ddl.sql"
 CAN_READ_UDF = SQL_ROOT / "can_read_jira_project.sql"
 JIRA_ROW_FILTER = SQL_ROOT / "jira_project_row_filter.sql"
+NATIVE_DAB_CONFIG = BUNDLE_ROOT / "databricks.yml"
+REPOCTL_BUNDLE_METADATA = BUNDLE_ROOT / "repoctl.bundle.yaml"
 
 
 def test_repo_validation_accepts_abac_dogfood_bundle_metadata() -> None:
@@ -44,7 +47,28 @@ def test_discovery_finds_abac_dogfood_bundle_with_expected_metadata() -> None:
 
     assert bundle.project == "platform-governance"
     assert bundle.name == "abac-jira-project-access"
+    assert bundle.metadata_path == REPOCTL_BUNDLE_METADATA
     assert bundle.metadata["type"] == "abac-access-map"
+
+
+def test_abac_dogfood_native_bundle_boundary_is_inert() -> None:
+    assert NATIVE_DAB_CONFIG.is_file()
+    assert REPOCTL_BUNDLE_METADATA.is_file()
+    assert not (BUNDLE_ROOT / "bundle.yaml").exists()
+
+    config = load_metadata(NATIVE_DAB_CONFIG)
+
+    assert set(config) == {"bundle", "targets"}
+    assert config["bundle"]["name"] == "abac-jira-project-access"
+    assert set(config["targets"]) == {"dev", "uat", "prod"}
+    assert config["targets"]["dev"]["mode"] == "development"
+    assert config["targets"]["dev"]["default"] is True
+    assert config["targets"]["uat"]["mode"] == "production"
+    assert config["targets"]["prod"]["mode"] == "production"
+    assert "resources" not in config
+    assert "include" not in config
+    for target in config["targets"].values():
+        assert "resources" not in target
 
 
 def load_spec() -> str:

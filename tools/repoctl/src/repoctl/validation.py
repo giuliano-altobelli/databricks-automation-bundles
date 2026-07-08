@@ -29,7 +29,9 @@ def validate_repo(root: Path) -> ValidationResult:
         errors.extend(_validate_project(root, project.path, project.metadata))
 
     for bundle in result.bundles:
-        errors.extend(_validate_bundle(root, bundle.path, bundle.metadata))
+        errors.extend(
+            _validate_bundle(root, bundle.path, bundle.metadata_path, bundle.metadata)
+        )
 
     return ValidationResult(ok=not errors, errors=errors)
 
@@ -50,9 +52,14 @@ def _validate_project(root: Path, path: Path, metadata: dict[str, Any]) -> list[
     return errors
 
 
-def _validate_bundle(root: Path, path: Path, metadata: dict[str, Any]) -> list[str]:
+def _validate_bundle(
+    root: Path,
+    path: Path,
+    metadata_path: Path,
+    metadata: dict[str, Any],
+) -> list[str]:
     errors: list[str] = []
-    display_path = _display_path(root, path / "bundle.yaml")
+    display_path = _display_path(root, metadata_path)
 
     errors.extend(_reject_unknown_fields(display_path, metadata, BUNDLE_FIELDS))
     errors.extend(

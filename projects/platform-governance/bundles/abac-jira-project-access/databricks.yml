@@ -1,0 +1,12 @@
+# Phase 1b keeps this native bundle boundary inert/offline; SQL is tested but not deployed.
+bundle:
+  name: abac-jira-project-access
+
+targets:
+  dev:
+    mode: development
+    default: true
+  uat:
+    mode: production
+  prod:
+    mode: production

@@ -54,6 +54,33 @@ def test_discover_finds_project_bundle_scaling_unit(tmp_path: Path) -> None:
     assert [bundle.name for bundle in result.bundles] == ["foundation-smoke"]
     assert result.bundles[0].project == "platform-governance"
     assert result.bundles[0].path == bundle_root
+    assert result.bundles[0].metadata_path == bundle_root / "bundle.yaml"
+
+
+def test_discover_prefers_repoctl_bundle_metadata_when_present(tmp_path: Path) -> None:
+    bundle_root = write_foundation_fixture(tmp_path)
+    write_json_yaml(
+        bundle_root / "repoctl.bundle.yaml",
+        {
+            "version": 1,
+            "name": "foundation-smoke",
+            "type": "repoctl-native-boundary",
+            "owner": {"team": "platform-governance"},
+            "review": {"policy": "owner-approval"},
+            "targets": {
+                "dev": {"mode": "development", "default": True},
+                "uat": {"mode": "validation", "ci_only": True},
+                "prod": {"mode": "production", "ci_only": True},
+            },
+            "depends_on": {"bundles": [], "libs": []},
+        },
+    )
+
+    result = discover(tmp_path)
+
+    assert [bundle.name for bundle in result.bundles] == ["foundation-smoke"]
+    assert result.bundles[0].metadata["type"] == "repoctl-native-boundary"
+    assert result.bundles[0].metadata_path == bundle_root / "repoctl.bundle.yaml"
 
 
 def test_validate_accepts_minimal_foundation_metadata(tmp_path: Path) -> None:
@@ -68,7 +95,7 @@ def test_validate_accepts_minimal_foundation_metadata(tmp_path: Path) -> None:
 def test_validate_rejects_bundle_without_required_targets(tmp_path: Path) -> None:
     bundle_root = write_foundation_fixture(tmp_path)
     write_json_yaml(
-        bundle_root / "bundle.yaml",
+        bundle_root / "repoctl.bundle.yaml",
         {
             "version": 1,
             "name": "foundation-smoke",
@@ -83,7 +110,11 @@ def test_validate_rejects_bundle_without_required_targets(tmp_path: Path) -> Non
     result = validate_repo(tmp_path)
 
     assert result.ok is False
-    assert "must declare targets: dev, prod, uat" in "\n".join(result.errors)
+    errors = "\n".join(result.errors)
+    assert (
+        "projects/platform-governance/bundles/foundation-smoke/repoctl.bundle.yaml "
+        "must declare targets: dev, prod, uat"
+    ) in errors
 
 
 def test_validate_rejects_metadata_outside_schema_contract(tmp_path: Path) -> None:
