@@ -64,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
                 _resolve_input_path(root, args.bundle),
                 args.target,
                 _resolve_input_path(root, args.evidence),
+                root,
             )
             if result.ok:
                 print("Evidence ok")
