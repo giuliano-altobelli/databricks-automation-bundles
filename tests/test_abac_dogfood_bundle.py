@@ -20,6 +20,10 @@ EXPECTED_ACCESS_MAP_COLUMNS = {
     "source_system": ("STRING", "NOT NULL"),
     "updated_at": ("TIMESTAMP", "NOT NULL"),
 }
+SQL_ROOT = BUNDLE_ROOT / "sql"
+ACCESS_MAP_DDL = SQL_ROOT / "access_map_ddl.sql"
+CAN_READ_UDF = SQL_ROOT / "can_read_jira_project.sql"
+JIRA_ROW_FILTER = SQL_ROOT / "jira_project_row_filter.sql"
 
 
 def test_repo_validation_accepts_abac_dogfood_bundle_metadata() -> None:
@@ -57,8 +61,49 @@ def extract_column_contracts(spec: str) -> dict[str, tuple[str, str]]:
     return {
         name: (column_type, nullability)
         for name, column_type, nullability in rows
-        if name in EXPECTED_ACCESS_MAP_COLUMNS
     }
+
+
+def load_sql(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def normalized_sql(sql: str) -> str:
+    return re.sub(r"\s+", " ", sql).lower()
+
+
+def strip_sql_line_comments(sql: str) -> str:
+    return re.sub(r"--.*", "", sql)
+
+
+def extract_access_map_ddl_columns(sql: str) -> dict[str, tuple[str, str]]:
+    match = re.search(
+        r"create\s+(?:or\s+replace\s+)?table\s+(?:if\s+not\s+exists\s+)?"
+        r"prod_security\.access_maps\.jira_project_access\s*\((?P<columns>.*?)\)",
+        sql,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    assert match is not None
+
+    columns = {}
+    for raw_line in match.group("columns").splitlines():
+        line = raw_line.split("--", 1)[0].strip().rstrip(",")
+        if not line:
+            continue
+
+        column_match = re.match(
+            r"(?P<name>[a-z_]+)\s+(?P<type>STRING|BOOLEAN|TIMESTAMP)"
+            r"(?:\s+(?P<not_null>NOT\s+NULL))?$",
+            line,
+            flags=re.IGNORECASE,
+        )
+        assert column_match is not None, line
+        nullability = "NOT NULL" if column_match.group("not_null") else "NULL"
+        columns[column_match.group("name")] = (
+            column_match.group("type").upper(),
+            nullability,
+        )
+    return columns
 
 
 def extract_allowed_access_levels(spec: str) -> set[str]:
@@ -125,3 +170,68 @@ def test_abac_dogfood_spec_defines_udf_signature_and_policy_predicate() -> None:
         in spec
     )
     assert "principal argument equivalent supplied by Databricks policy context" in spec
+
+
+def test_abac_dogfood_sql_source_files_exist() -> None:
+    assert ACCESS_MAP_DDL.is_file()
+    assert CAN_READ_UDF.is_file()
+    assert JIRA_ROW_FILTER.is_file()
+
+
+def test_abac_dogfood_access_map_ddl_matches_spec_column_contract() -> None:
+    ddl = load_sql(ACCESS_MAP_DDL)
+
+    assert "prod_security.access_maps.jira_project_access" in ddl
+    assert extract_access_map_ddl_columns(ddl) == EXPECTED_ACCESS_MAP_COLUMNS
+    assert "enforcement index" in ddl.lower()
+    assert "not an approval ledger" in ddl.lower()
+
+
+def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
+    udf = load_sql(CAN_READ_UDF)
+    normalized = normalized_sql(udf)
+    executable = normalized_sql(strip_sql_line_comments(udf))
+
+    assert "prod_security.policies.can_read_jira_project" in udf
+    assert re.search(
+        r"\(\s*principal\s+STRING\s*,\s*project_key\s+STRING\s*\)\s*"
+        r"RETURNS\s+BOOLEAN",
+        udf,
+        flags=re.IGNORECASE,
+    )
+    assert "prod_security.access_maps.jira_project_access" in executable
+    assert "effective_principal = principal" not in normalized
+    assert "project_key = project_key" not in normalized
+    assert re.search(
+        r"access_map\.effective_principal\s*=\s*args\.requested_principal",
+        executable,
+    )
+    assert re.search(
+        r"access_map\.project_key\s*=\s*args\.requested_project_key",
+        executable,
+    )
+    assert "is_active = true" in executable
+    assert re.search(
+        r"access_level\s+in\s*\(\s*'read'\s*,\s*'admin_view'\s*\)",
+        executable,
+    )
+    assert re.search(r"valid_from\s+<=\s+current_timestamp\(\)", executable)
+    assert re.search(
+        r"expires_at\s+is\s+null\s+or\s+current_timestamp\(\)\s+<\s+"
+        r"(?:[a-z_]+\.)?expires_at",
+        executable,
+    )
+    assert "principal is null" in executable
+    assert "project_key is null" in executable
+    assert "false" in executable
+
+
+def test_abac_dogfood_policy_fragment_calls_udf_and_preserves_terraform_boundary() -> None:
+    policy = load_sql(JIRA_ROW_FILTER)
+
+    assert (
+        "prod_security.policies.can_read_jira_project(current_user(), project_key)"
+        in policy
+    )
+    assert "Terraform" in policy
+    assert "live attachment/rollout controls" in policy
