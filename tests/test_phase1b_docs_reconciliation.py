@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -258,12 +259,12 @@ def test_templates_readme_lists_phase_1b_abac_template() -> None:
     assert "ABAC-specific templates and Databricks asset files are deferred" not in templates_readme
 
 
-def test_phase_1b_tracker_marks_tasks_through_docs_reconciliation_complete() -> None:
+def test_phase_1b_tracker_marks_all_tasks_complete() -> None:
     tracker = text(TRACKER)
 
-    for task_number in range(1, 14):
+    for task_number in range(1, 15):
         assert f"- [x] {task_number}." in tracker
-    assert "- [ ] 14." in tracker
+    assert re.search(r"^- \[ \] \d+\.", tracker, re.MULTILINE) is None
     assert "Task 13 verification:" in tracker
     assert "passed with 13 tests" in tracker
     assert "passed with 5 tests" not in tracker
