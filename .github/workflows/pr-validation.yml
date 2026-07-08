@@ -1,0 +1,53 @@
+name: PR Validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Local verify parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Bootstrap tooling
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run pytest
+        run: uv run pytest -q
+
+      - name: Run ruff
+        run: uv run ruff check tools tests
+
+      - name: Run prek
+        run: uv run prek -c prek.toml run --all-files
+
+      - name: Discover bundles
+        run: uv run repoctl discover
+
+      - name: Validate repository metadata
+        run: uv run repoctl validate
+
+      - name: Compute changed bundles
+        env:
+          CHANGED_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          uv run repoctl changed --base "$CHANGED_BASE" > changed-bundles.json
+          {
+            echo "## Changed bundles"
+            echo
+            echo "Base: \`$CHANGED_BASE\`"
+            echo
+            echo "\`\`\`json"
+            cat changed-bundles.json
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
