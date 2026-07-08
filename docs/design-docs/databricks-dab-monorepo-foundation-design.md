@@ -34,15 +34,17 @@ Shipped:
 - one inert sample project and bundle metadata fixture
 - offline tests and a recorded local verification log
 
-## Phase 1b: Enforcement and Dogfood (pending)
+## Phase 1b: Enforcement and Dogfood (shipped 2026-07-08)
 
 - root `justfile` with `just bootstrap` and `just verify` wrappers over the raw `uv` commands, keeping raw `uv` fallback documented
 - PR-validation GitHub Actions workflow: `uv` bootstrap, `prek`, `repoctl validate`, and changed-bundle computation
 - `repoctl evidence check` for promotion-decision evidence
-- ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access/` with its focused `SPEC.md`
+- ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access/` with its focused `SPEC.md`, SQL sources, offline fail-closed contract fixtures, inert `databricks.yml`, and `repoctl.bundle.yaml` metadata
 - concrete `abac-access-map` bundle template
 
-UAT and production deployment workflows and CI evidence artifact upload follow after phase 1b.
+Native Databricks bundle roots use `repoctl.bundle.yaml` for monorepo metadata because `bundle.yaml` can be interpreted by the Databricks CLI as a second root config next to `databricks.yml`. Keeping repoctl metadata in `repoctl.bundle.yaml` avoids that Databricks CLI root-config collision. Metadata-only and legacy bundles may still use `bundle.yaml`.
+
+UAT and production deployment workflows and CI evidence artifact upload remain after phase 1b.
 
 # Ownership Boundary
 
@@ -107,7 +109,7 @@ Recommended phase-1 shape:
             └── abac-jira-project-access/
                 ├── README.md
                 ├── SPEC.md
-                ├── bundle.yaml
+                ├── repoctl.bundle.yaml
                 ├── databricks.yml
                 ├── pyproject.toml    # optional; only when the bundle needs Python deps
                 ├── uv.lock           # optional; scoped to this bundle
@@ -116,7 +118,7 @@ Recommended phase-1 shape:
                 └── tests/
 ```
 
-`databricks.yml` remains the native Databricks bundle definition. `project.yaml` and `bundle.yaml` are monorepo governance metadata used by `repoctl` and GitHub Actions.
+`databricks.yml` remains the native Databricks bundle definition. `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only `bundle.yaml` files are monorepo governance metadata used by `repoctl` and GitHub Actions.
 
 `templates/README.md` explains the approved scaffold path. Phase 1a ships generic project and bundle templates; phase 1b adds the concrete `abac-access-map` template. Other future bundle templates are intentionally not defined in this design.
 
@@ -206,13 +208,13 @@ Phase-1 commands:
 uv run repoctl discover
 uv run repoctl validate
 uv run repoctl changed --base origin/main
-uv run repoctl evidence check --bundle <path> --target prod  # phase 1b
+uv run repoctl evidence check --bundle <path> --target prod --evidence <run-dir>
 ```
 
 Initial responsibilities:
 
 - discover projects and bundles
-- validate `project.yaml` and `bundle.yaml`
+- validate `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only `bundle.yaml`
 - compute changed bundles and dependents
 - distinguish docs-only changes from deploy-affecting changes
 - validate promotion evidence before `prod`
@@ -281,7 +283,7 @@ docs/adr/
 projects/<project>/README.md
 projects/<project>/project.yaml
 projects/<project>/bundles/<bundle>/README.md
-projects/<project>/bundles/<bundle>/bundle.yaml
+projects/<project>/bundles/<bundle>/repoctl.bundle.yaml
 ```
 
 Do not require a full `SPEC.md` for every small bundle from day one. Require a focused spec when a bundle introduces a governance-sensitive pattern, a new shared contract, or a new resource family.

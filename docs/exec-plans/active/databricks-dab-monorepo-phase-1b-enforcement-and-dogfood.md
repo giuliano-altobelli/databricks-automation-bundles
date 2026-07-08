@@ -40,18 +40,18 @@ This tracker records the Phase 1b implementation scope for enforcement and the f
 ## Implementation Checklist
 
 - [x] 1. Add the Phase 1b tracker doc.
-- [ ] 2. Add the root justfile with bootstrap/verify commands.
-- [ ] 3. Fix changed-file classification so a root `justfile` change affects all bundles, and update README docs while preserving raw `uv` commands as fallback.
-- [ ] 4. Add `repoctl evidence check --bundle <path> --target prod --evidence <run-dir>` with fail-closed missing-file behavior.
-- [ ] 5. Content-validate evidence: malformed JSON, unapproved decision, or bundle/target mismatch reject.
-- [ ] 6. Add documentation-grade JSON Schemas under `schemas/evidence/` with no new dependencies.
-- [ ] 7. Add the full ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access`: metadata and focused `SPEC.md` owning DDL, UDF, and policy SQL decisions deferred by the design doc.
-- [ ] 8. Add SQL sources for the ABAC dogfood DDL, UDF, and policy decisions.
-- [ ] 9. Add offline fail-closed contract tests with fixtures for the ABAC dogfood bundle.
-- [ ] 10. Add a minimal `databricks.yml` for the ABAC dogfood bundle that deploys nothing.
-- [ ] 11. Add PR-validation workflow with local-verify parity: prek, ruff, pytest including bundle tests, repoctl validate, and changed-bundle computation into the job summary. Verify locally only; no push, no PR.
-- [ ] 12. Add concrete `templates/bundles/abac-access-map/` template with a test proving it materializes into a valid, test-passing bundle.
-- [ ] 13. Reconcile docs: design-doc phasing, shipped doc, README.
+- [x] 2. Add the root justfile with bootstrap/verify commands.
+- [x] 3. Fix changed-file classification so a root `justfile` change affects all bundles, and update README docs while preserving raw `uv` commands as fallback.
+- [x] 4. Add `repoctl evidence check --bundle <path> --target prod --evidence <run-dir>` with fail-closed missing-file behavior.
+- [x] 5. Content-validate evidence: malformed JSON, unapproved decision, or bundle/target mismatch reject.
+- [x] 6. Add documentation-grade JSON Schemas under `schemas/evidence/` with no new dependencies.
+- [x] 7. Add the full ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access`: metadata and focused `SPEC.md` owning DDL, UDF, and policy SQL decisions deferred by the design doc.
+- [x] 8. Add SQL sources for the ABAC dogfood DDL, UDF, and policy decisions.
+- [x] 9. Add offline fail-closed contract tests with fixtures for the ABAC dogfood bundle.
+- [x] 10. Add a minimal `databricks.yml` for the ABAC dogfood bundle that deploys nothing.
+- [x] 11. Add PR-validation workflow with local-verify parity: prek, ruff, pytest including bundle tests, repoctl validate, and changed-bundle computation into the job summary. Verify locally only; no push, no PR.
+- [x] 12. Add concrete `templates/bundles/abac-access-map/` template with a test proving it materializes into a valid, test-passing bundle.
+- [x] 13. Reconcile docs: design-doc phasing, shipped doc, README.
 - [ ] 14. Final verification sweep with a red-then-green evidence-check smoke.
 
 ## Design Decisions Already Settled
@@ -89,23 +89,14 @@ This tracker records the Phase 1b implementation scope for enforcement and the f
 - 2026-07-08: Phase 1b baseline from task handoff confirms `uv run pytest -q` passed with 11 tests before this tracker task.
 - 2026-07-08: Phase 1b baseline from task handoff confirms `uv run ruff check tools tests` passed before this tracker task.
 
-Task-level entries to add as work lands:
+Task-level entries:
 
-```text
-- YYYY-MM-DD: Task 2 verification:
-- YYYY-MM-DD: Task 3 verification:
-- YYYY-MM-DD: Task 4 verification:
-- YYYY-MM-DD: Task 5 verification:
-- YYYY-MM-DD: Task 6 verification:
-- YYYY-MM-DD: Task 7 verification:
-- YYYY-MM-DD: Task 8 verification:
-- YYYY-MM-DD: Task 9 verification:
-- YYYY-MM-DD: Task 10 verification:
-- YYYY-MM-DD: Task 11 verification:
-- YYYY-MM-DD: Task 12 verification:
-- YYYY-MM-DD: Task 13 verification:
-- YYYY-MM-DD: Task 14 verification:
-```
+- 2026-07-08: Tasks 2-3 verification: justfile tests, changed-file classifier tests, README fallback docs, and full repo validation passed during those tasks.
+- 2026-07-08: Tasks 4-6 verification: evidence-check unit tests and evidence schema documentation tests passed.
+- 2026-07-08: Tasks 7-10 verification: ABAC dogfood metadata, SQL source, fail-closed contract fixtures, and inert `databricks.yml` tests passed.
+- 2026-07-08: Task 11 verification: PR-validation workflow parity tests passed locally; no push, PR, deploy, or remote workflow run.
+- 2026-07-08: Task 12 verification: `templates/bundles/abac-access-map/` materialization test passed.
+- 2026-07-08: Task 13 verification: `uv run pytest -q tests/test_phase1b_docs_reconciliation.py` passed with 5 tests after first failing red against stale Phase 1b docs; `uv run pytest -q` passed with 61 tests; `uv run ruff check tools tests` passed.
 
 ## Self-Review Checklist
 

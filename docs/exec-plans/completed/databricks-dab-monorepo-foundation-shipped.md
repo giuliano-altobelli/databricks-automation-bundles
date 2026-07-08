@@ -1,12 +1,12 @@
 # Databricks DAB Monorepo Foundation: What Shipped
 
-Status: in progress
+Status: Phase 1a shipped; Phase 1b reconciled in this branch
 
 Source of truth: [Databricks DAB Monorepo Foundation Design](../design-docs/databricks-dab-monorepo-foundation-design.md)
 
 This document explains what has shipped in the lightweight Databricks Asset Bundle monorepo foundation. It is intentionally written from the repository outward: first the repo shape, then metadata contracts, local toolchain, validation commands, and changed-bundle detection.
 
-Phase 1a has shipped the repository foundation. Phase 1b is still pending and covers CI enforcement, production evidence checks, and the first ABAC dogfood bundle.
+Phase 1a shipped the repository foundation. Phase 1b has now shipped in this branch as a local/PR-validation/evidence-check/dogfood/template slice. It does not add UAT or production deployment workflows and does not upload CI evidence artifacts.
 
 ## Repo Shape
 
@@ -60,13 +60,15 @@ The current repository has the Phase 1a foundation shape materialized:
 
 The shipped `foundation-smoke` bundle is intentionally inert. It proves that the monorepo can discover and validate project and bundle metadata without creating Databricks assets. It does not contain `databricks.yml`, SQL, UDF source, ABAC policies, or access-map contracts.
 
-The design-approved ABAC dogfood bundle is not part of Phase 1a. It is reserved for Phase 1b:
+Phase 1b also adds the first ABAC dogfood bundle:
 
 ```text
 projects/platform-governance/bundles/abac-jira-project-access/
 ```
 
-That pending bundle will be the first real Databricks governance workload. The shipped `foundation-smoke` bundle exists only to exercise the foundation contracts offline.
+That bundle owns a focused `SPEC.md`, SQL sources, offline fail-closed contract fixtures, an inert native `databricks.yml`, and `repoctl.bundle.yaml` metadata. It proves the Jira project-key access decision shape offline; it does not deploy live Databricks resources.
+
+Phase 1b also adds `.github/workflows/pr-validation.yml`, documentation-grade schemas under `schemas/evidence/`, and the concrete template at `templates/bundles/abac-access-map/`.
 
 ### What Each Area Owns
 
@@ -78,13 +80,13 @@ That pending bundle will be the first real Databricks governance workload. The s
 
 `docs/` owns architectural explanation, accepted design decisions, implementation tracking, and this shipped-foundation explanation. It records why the foundation exists and what tradeoffs are intentional.
 
-`schemas/` owns machine-checkable metadata contracts for projects and bundles. These schemas define what `project.yaml` and `bundle.yaml` are allowed to contain.
+`schemas/` owns machine-checkable metadata contracts for projects and bundles. These schemas define what `project.yaml`, `repoctl.bundle.yaml`, and metadata-only `bundle.yaml` files are allowed to contain. `schemas/evidence/` documents the CI evidence artifact contract.
 
 `tools/repoctl/` owns the small repository control CLI. `repoctl` discovers projects and bundles, validates metadata, and classifies changed files.
 
 `libs/` owns future explicit shared packages. Phase 1a ships only a README because no shared runtime package has been introduced yet.
 
-`templates/` owns approved scaffolds for adding new projects and bundles. Phase 1a ships neutral templates only. ABAC-specific templates are deferred until the dogfood bundle phase.
+`templates/` owns approved scaffolds for adding new projects and bundles. Phase 1a ships neutral templates. Phase 1b adds the concrete `templates/bundles/abac-access-map/` template.
 
 `projects/` owns project-specific bundle areas. Phase 1a ships one project, `platform-governance`, as the first ownership boundary.
 
@@ -92,17 +94,20 @@ That pending bundle will be the first real Databricks governance workload. The s
 
 `projects/platform-governance/bundles/foundation-smoke/bundle.yaml` owns metadata for the inert smoke bundle: version, name, type, owning team, review policy, target declarations, and dependency declarations.
 
+`projects/platform-governance/bundles/abac-jira-project-access/repoctl.bundle.yaml` owns the same monorepo metadata shape for the native ABAC dogfood bundle. Native Databricks bundle roots use `repoctl.bundle.yaml` so Databricks CLI sees only `databricks.yml` as the native root config. This keeps bundle.yaml as the legacy metadata-only fallback.
+
 `tests/` owns offline verification for the foundation. These tests cover `repoctl` discovery, validation, and changed-file classification.
 
 ### Two Repo-Shape Terms To Understand
 
 `repoctl` is the repository control CLI for this monorepo. It is not the Databricks CLI, and it does not deploy Databricks assets. Its job is to understand this repository's shape and contracts.
 
-Phase 1a ships three `repoctl` commands:
+The repository now ships four `repoctl` command groups:
 
-- `repoctl discover` finds projects and bundles by reading `projects/<project>/project.yaml` and `projects/<project>/bundles/<bundle>/bundle.yaml`.
+- `repoctl discover` finds projects and bundles by reading `projects/<project>/project.yaml` plus either `projects/<project>/bundles/<bundle>/repoctl.bundle.yaml` or legacy metadata-only `projects/<project>/bundles/<bundle>/bundle.yaml`.
 - `repoctl validate` checks project and bundle metadata against the foundation rules.
 - `repoctl changed --base <ref>` classifies changed files and reports which bundles are affected.
+- `repoctl evidence check --bundle <path> --target prod --evidence <run-dir>` validates production-promotion evidence fail-closed.
 
 That is useful because native Databricks bundle tooling understands a single bundle, but this repo needs monorepo-level answers before any Databricks command runs. CI needs to know which bundles exist, whether their metadata is valid, whether a change is docs-only, whether a root contract change affects every bundle, and which bundle paths should be validated or deployed later.
 
@@ -121,7 +126,7 @@ The field is still useful in Phase 1a because it makes review intent explicit at
 
 The repo shape gives every future Databricks asset a predictable home. A new project belongs under `projects/<project>`. A new deployable unit belongs under `projects/<project>/bundles/<bundle>`.
 
-The shape also separates repo governance from native Databricks bundle behavior. Monorepo metadata lives in `project.yaml` and `bundle.yaml`. Native Databricks bundle configuration will still live in `databricks.yml` when a real Databricks bundle is introduced.
+The shape also separates repo governance from native Databricks bundle behavior. Monorepo metadata lives in `project.yaml`, `repoctl.bundle.yaml`, or metadata-only `bundle.yaml`. Native Databricks bundle configuration lives in `databricks.yml`.
 
 Finally, the shape makes changed-bundle detection possible. Because bundles live at predictable paths, `repoctl` can map changed files to affected bundles. Root contract changes, such as updates under `schemas/`, `templates/`, or `tools/`, can be treated as affecting all bundles.
 
@@ -264,12 +269,15 @@ The remaining sections will be expanded after their prior section is reviewed:
 
 Metadata contracts are the small YAML files that let the monorepo reason about projects and bundles before it runs any Databricks command.
 
-Phase 1a ships two active metadata contracts:
+The repository supports these active metadata contracts:
 
 ```text
 projects/<project>/project.yaml
+projects/<project>/bundles/<bundle>/repoctl.bundle.yaml
 projects/<project>/bundles/<bundle>/bundle.yaml
 ```
+
+Use `repoctl.bundle.yaml` for native Databricks bundle roots that also contain `databricks.yml`. Use `bundle.yaml` as the legacy metadata-only fallback.
 
 The contracts are intentionally lightweight. They do not describe every Databricks resource. They describe the repository facts that every project and bundle must declare so tooling and CI can make consistent decisions.
 
@@ -293,7 +301,7 @@ review:
   policy: owner-approval
 ```
 
-And one active bundle metadata file:
+And active bundle metadata files with this shape:
 
 ```yaml
 version: 1
@@ -318,7 +326,7 @@ depends_on:
   libs: []
 ```
 
-The same shapes are present in the neutral templates under `templates/project/` and `templates/bundle-basic/`.
+The same shapes are present in the neutral templates under `templates/project/` and `templates/bundle-basic/`, and in the native ABAC dogfood bundle's `repoctl.bundle.yaml`.
 
 ### What Each Metadata File Owns
 
@@ -329,7 +337,7 @@ The same shapes are present in the neutral templates under `templates/project/` 
 - `owner.team`: the team accountable for the project
 - `review.policy`: the named review rule for the project
 
-`bundle.yaml` owns bundle-level governance metadata. In Phase 1a, that means:
+`repoctl.bundle.yaml` or legacy metadata-only `bundle.yaml` owns bundle-level governance metadata. That means:
 
 - `version`: the metadata contract version
 - `name`: the bundle name
@@ -339,7 +347,7 @@ The same shapes are present in the neutral templates under `templates/project/` 
 - `targets`: the required `dev`, `uat`, and `prod` target contract
 - `depends_on`: declared bundle and library dependencies
 
-The important distinction is that `project.yaml` answers who owns the area, while `bundle.yaml` answers how one deployable unit participates in validation, targeting, and dependency-aware change detection.
+The important distinction is that `project.yaml` answers who owns the area, while bundle metadata answers how one deployable unit participates in validation, targeting, and dependency-aware change detection.
 
 ### What `repoctl validate` Enforces Today
 
@@ -378,7 +386,7 @@ This is deliberately stricter than just checking that YAML parses. Unknown top-l
 
 The metadata contract gives CI and local tooling a stable vocabulary.
 
-Without `project.yaml`, the repo can see directories but not ownership or review intent. Without `bundle.yaml`, the repo can see folders but not which folders are actual bundle units, which targets they claim to support, or what dependencies should be considered when a change happens.
+Without `project.yaml`, the repo can see directories but not ownership or review intent. Without bundle metadata, the repo can see folders but not which folders are actual bundle units, which targets they claim to support, or what dependencies should be considered when a change happens.
 
 The contract also lets the foundation remain Databricks-native. Databricks-specific deployment configuration still belongs in `databricks.yml` when a real bundle appears. The monorepo metadata only adds repository-level facts around that native bundle file.
 
@@ -400,7 +408,7 @@ prod
 
 This does not deploy anything by itself. It records the expected target posture so local tooling and future CI can prevent accidental promotion paths from becoming ambiguous.
 
-All three targets are required for every `bundle.yaml` in Phase 1a. A bundle that declares only `dev` and `prod` fails `repoctl validate` because it skips the shared validation lane. The foundation intentionally reserves `uat` from day one so future CI has a consistent non-production target for changed-bundle validation before production promotion.
+All three targets are required for every bundle metadata file. A bundle that declares only `dev` and `prod` fails `repoctl validate` because it skips the shared validation lane. The foundation intentionally reserves `uat` from day one so future CI has a consistent non-production target for changed-bundle validation before production promotion.
 
 This does not mean every bundle has a live UAT deployment today. It means every bundle must declare the same target contract so automation can be uniform when deployments are added.
 
@@ -436,7 +444,7 @@ The value is still part of the contract because it records review intent next to
 Metadata contract scope in Phase 1a includes:
 
 - project metadata in `project.yaml`
-- bundle metadata in `bundle.yaml`
+- bundle metadata in `repoctl.bundle.yaml` or legacy metadata-only `bundle.yaml`
 - schema files for project and bundle metadata
 - validation that names match directory names
 - validation that required fields exist
@@ -575,11 +583,11 @@ Each command checks a different layer:
 - `repoctl validate` checks metadata contracts.
 - `repoctl changed --base HEAD` checks changed-file classification against the current worktree.
 
-### Phase 1b TODO: `just` Recipes
+### Phase 1b Shipped: `just` Recipes
 
-Phase 1b should add a root `justfile` as an ergonomic command layer over the raw `uv` commands.
+Phase 1b adds a root `justfile` as an ergonomic command layer over the raw `uv` commands.
 
-The intended recipes are:
+The shipped recipes are:
 
 ```make
 bootstrap:
@@ -595,14 +603,14 @@ verify:
     uv run repoctl changed --base HEAD
 ```
 
-With that in place, the preferred Day 0 path becomes:
+The preferred Day 0 path is:
 
 ```bash
 just bootstrap
 just verify
 ```
 
-The raw `uv` commands should remain documented as the fallback and as the underlying source of truth. Adding `just` improves developer ergonomics, but it also adds a new local prerequisite, so Phase 1b should document how developers install or otherwise obtain `just`.
+The raw `uv` commands remain documented as the fallback and as the underlying source of truth.
 
 ### Why The Root Toolchain Is Useful
 
@@ -639,7 +647,7 @@ Local toolchain scope in Phase 1a includes:
 - local commands for discovery, validation, and changed-file classification
 - offline verification without live Databricks resources
 
-Phase 1b local-toolchain scope should add:
+Phase 1b local-toolchain scope adds:
 
 - a root `justfile`
 - `just bootstrap` as the ergonomic wrapper for Day 0 setup
@@ -998,7 +1006,7 @@ For example:
 
 ```text
 projects/<project>/bundles/<bundle>/
-├── bundle.yaml
+├── repoctl.bundle.yaml
 ├── databricks.yml
 ├── pyproject.toml
 ├── uv.lock
@@ -1186,9 +1194,9 @@ Templates do not create `databricks.yml`, SQL, UDF code, resources, or tests for
 
 Templates do not install dependencies or create lockfiles.
 
-### Phase 1b Template TODO
+### Phase 1b Template Shipped
 
-Phase 1b should add the first concrete bundle template:
+Phase 1b adds the first concrete bundle template:
 
 ```text
 templates/bundles/abac-access-map/
@@ -1271,24 +1279,29 @@ It also shipped bundle target metadata that records the intended control split:
 
 Those target declarations are metadata only in Phase 1a. They do not deploy anything.
 
-### Phase 1b CI TODO
+### Phase 1b CI Shipped
 
-Phase 1b should add the first GitHub Actions enforcement workflow.
+Phase 1b adds the first GitHub Actions enforcement workflow:
 
-The intended pull request workflow is:
+```text
+.github/workflows/pr-validation.yml
+```
+
+The shipped pull request workflow is:
 
 1. Bootstrap the root `uv` tooling environment.
-2. Run `prek`.
-3. Run `repoctl validate`.
-4. Compute changed bundles and dependents.
-5. Run Databricks bundle validation for changed bundles once real Databricks bundles exist.
+2. Run the same verification commands as `just verify`: `pytest`, `ruff`, `prek`, `repoctl discover`, `repoctl validate`, and changed-bundle computation.
+3. Write changed-bundle output into the GitHub Actions job summary.
 
-The Phase 1b design also includes:
+The Phase 1b delivery also includes:
 
 - `repoctl evidence check --bundle <path> --target prod`
+- documentation-grade evidence schemas in `schemas/evidence/`
 - the ABAC dogfood bundle
 - the concrete `abac-access-map` template
-- the root `justfile` TODO for `just bootstrap` and `just verify`
+- the root `justfile` with `just bootstrap` and `just verify`
+
+This phase does not run UAT or production deployment workflows, does not upload CI evidence artifacts, and does not perform promotion automation.
 
 ### Later UAT And Production TODO
 
@@ -1364,7 +1377,7 @@ CI/CD and evidence scope in Phase 1a includes:
 - design-level evidence artifact layout
 - explicit deferral of evidence upload and deployment workflows
 
-Phase 1b scope includes:
+Phase 1b delivered scope adds:
 
 - PR validation workflow
 - `repoctl evidence check`
@@ -1498,11 +1511,11 @@ Only after those contracts exist should the repo add real Databricks bundles, CI
 
 This sequencing keeps Phase 1a small enough to verify offline while preserving the boundaries needed for later deployment work.
 
-### What Moves To Phase 1b
+### What Phase 1b Adds
 
-Phase 1b is the next enforcement and dogfood slice.
+Phase 1b is the enforcement and dogfood slice delivered in this branch.
 
-It should add:
+It adds:
 
 - root `justfile` with `just bootstrap` and `just verify`
 - PR-validation GitHub Actions workflow
@@ -1511,7 +1524,7 @@ It should add:
 - focused ABAC dogfood `SPEC.md`
 - concrete `abac-access-map` template
 
-Phase 1b starts using the Phase 1a foundation for real enforcement, but still does not need to solve every future Databricks bundle family.
+Phase 1b starts using the Phase 1a foundation for real enforcement, but still does not solve every future Databricks bundle family.
 
 ### What Comes After Phase 1b
 
