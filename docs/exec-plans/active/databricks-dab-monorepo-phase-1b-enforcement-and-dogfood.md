@@ -1,6 +1,6 @@
 # Databricks DAB Monorepo Phase 1b Enforcement and Dogfood Tracker
 
-Status: active
+Status: completed
 
 This tracker records the Phase 1b implementation scope for enforcement and the first ABAC dogfood bundle. The original active plan file at this path was empty; this tracker reconstructs the task list from the active goal plus the current design, shipped-foundation, Phase 1a tracker, and README docs.
 
@@ -52,7 +52,7 @@ This tracker records the Phase 1b implementation scope for enforcement and the f
 - [x] 11. Add PR-validation workflow with local-verify parity: prek, ruff, pytest including bundle tests, repoctl validate, and changed-bundle computation into the job summary. Verify locally only; no push, no PR.
 - [x] 12. Add concrete `templates/bundles/abac-access-map/` template with a test proving it materializes into a valid, test-passing bundle.
 - [x] 13. Reconcile docs: design-doc phasing, shipped doc, README.
-- [ ] 14. Final verification sweep with a red-then-green evidence-check smoke.
+- [x] 14. Final verification sweep with a red-then-green evidence-check smoke.
 
 ## Design Decisions Already Settled
 
@@ -97,6 +97,11 @@ Task-level entries:
 - 2026-07-08: Task 11 verification: PR-validation workflow parity tests passed locally; no push, PR, deploy, or remote workflow run.
 - 2026-07-08: Task 12 verification: `templates/bundles/abac-access-map/` materialization test passed.
 - 2026-07-08: Task 13 verification: `uv run pytest -q tests/test_phase1b_docs_reconciliation.py` passed with 13 tests after failing red against stale Phase 1b docs; `uv run pytest -q` passed with 69 tests; `uv run ruff check tests/test_phase1b_docs_reconciliation.py` passed.
+- 2026-07-08: Task 14 red evidence smoke for `repoctl evidence check --bundle projects/platform-governance/bundles/abac-jira-project-access --target prod --evidence /tmp/phase1b-evidence-smoke.9ixPL8/red-missing` failed closed with exit 1: missing `changed-bundles.json`, `bundle-validate-prod.json`, `abac-contract-tests.json`, and `promotion-decision.json`.
+- 2026-07-08: Task 14 red evidence smoke for `repoctl evidence check --bundle projects/platform-governance/bundles/abac-jira-project-access --target prod --evidence /tmp/phase1b-evidence-smoke.9ixPL8/red-unapproved` failed closed with exit 1: changed bundles omitted the requested bundle, bundle validation status was `failed`, and promotion decision was `rejected`.
+- 2026-07-08: Task 14 green evidence smoke for `repoctl evidence check --bundle projects/platform-governance/bundles/abac-jira-project-access --target prod --evidence /tmp/phase1b-evidence-smoke.9ixPL8/green-valid` passed with exit 0 and `Evidence ok`.
+- 2026-07-08: Task 14 completion supersedes the prior tracker marker `- [ ] 14.`.
+- 2026-07-08: Task 14 final sweep `just verify` passed and covered the raw commands: `uv run pytest -q` passed with 69 tests; `uv run ruff check tools tests` returned `All checks passed!`; `uv run prek -c prek.toml run --all-files` passed `trim trailing whitespace`, `fix end of files`, and `check for added large files`; `uv run repoctl discover` found 1 project and 2 bundles; `uv run repoctl validate` returned `Validation ok`; `uv run repoctl changed --base HEAD` returned only `docs/exec-plans/active/databricks-dab-monorepo-phase-1b-enforcement-and-dogfood.md` changed, no changed bundles, `affects_all_bundles: false`, and `docs_only: true`.
 
 ## Self-Review Checklist
 
