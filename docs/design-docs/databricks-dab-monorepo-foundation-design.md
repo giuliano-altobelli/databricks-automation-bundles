@@ -228,10 +228,9 @@ GitHub Actions is the assumed CI/CD system.
 Pull request workflow:
 
 1. Bootstrap the root `uv` tooling environment.
-2. Run `prek`.
-3. Run `repoctl validate`.
-4. Compute changed bundles and dependents.
-5. Run Databricks bundle validation for changed bundles.
+2. Run `pytest`, `ruff`, and `prek`.
+3. Run `repoctl discover` and `repoctl validate`.
+4. Compute changed bundles and dependents into the job summary.
 
 UAT workflow:
 

@@ -472,7 +472,7 @@ Metadata contract scope in Phase 1a excludes:
 The mental model to keep:
 
 - `project.yaml` tells the repo who owns a project area and how review should be classified.
-- `bundle.yaml` tells the repo which bundle units exist and what target/dependency contract they claim.
+- bundle metadata tells the repo which bundle units exist and what target/dependency contract they claim. Native Databricks bundle roots use `repoctl.bundle.yaml`; legacy metadata-only `bundle.yaml` remains supported as a fallback.
 - schemas document the accepted metadata shape.
 - `repoctl validate` enforces the shipped subset of that shape.
 - review policy is declared intent today and future enforcement input later.
@@ -711,7 +711,7 @@ These commands are intentionally offline. They can run after Day 0 bootstrap wit
 
 `uv run repoctl discover` owns discovery validation. It proves the repo can find active projects and bundles from the expected metadata paths.
 
-`uv run repoctl validate` owns metadata contract validation. It proves discovered `project.yaml` and `bundle.yaml` files satisfy the shipped metadata rules.
+`uv run repoctl validate` owns metadata contract validation. It proves discovered `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only `bundle.yaml` files satisfy the shipped metadata rules.
 
 `uv run repoctl changed --base HEAD` owns local changed-file classification. It proves `repoctl` can compare the current worktree to a base ref and classify the result as docs-only, bundle-specific, or all-bundles-affecting.
 
@@ -733,7 +733,7 @@ These commands are intentionally offline. They can run after Day 0 bootstrap wit
 
 `prek` proves the tracked files satisfy the configured file-hygiene hooks.
 
-`repoctl discover` proves the current repository has discoverable metadata-backed units. In Phase 1a, it should find one project, `platform-governance`, and one inert bundle, `foundation-smoke`.
+`repoctl discover` proves the current repository has one project, `platform-governance`, and two bundles: `foundation-smoke` and `abac-jira-project-access`.
 
 `repoctl validate` proves the active metadata files satisfy the Phase 1a metadata contract.
 
@@ -745,7 +745,7 @@ Run the full validation loop after Day 0 bootstrap to prove the local setup work
 
 Run the full loop before opening a pull request that changes foundation code, schemas, templates, metadata, or docs.
 
-Run `repoctl validate` after editing `project.yaml`, `bundle.yaml`, or the metadata validator.
+Run `repoctl validate` after editing `project.yaml`, `repoctl.bundle.yaml`, legacy metadata-only `bundle.yaml`, or the metadata validator.
 
 Run `repoctl discover` after adding, removing, or renaming a project or bundle directory.
 
@@ -1092,7 +1092,7 @@ If this is clear, the next section, templates, can explain how future projects a
 
 Templates define the approved starting shapes for new projects and bundles.
 
-Phase 1a ships neutral templates only. They help create valid metadata boundaries without introducing Databricks asset files too early.
+Phase 1a ships neutral templates. They help create valid metadata boundaries without introducing Databricks asset files too early. Phase 1b ships the concrete ABAC access-map template for the first dogfood bundle family.
 
 ### What Shipped
 
@@ -1104,12 +1104,20 @@ templates/
 ├── project/
 │   ├── README.md
 │   └── project.yaml
-└── bundle-basic/
-    ├── README.md
-    └── bundle.yaml
+├── bundle-basic/
+│   ├── README.md
+│   └── bundle.yaml
+└── bundles/
+    └── abac-access-map/
+        ├── README.md
+        ├── SPEC.md
+        ├── repoctl.bundle.yaml
+        ├── databricks.yml
+        ├── sql/
+        └── tests/
 ```
 
-`templates/README.md` explains that Phase 1a includes only generic scaffolds and defers ABAC-specific templates and Databricks asset files.
+`templates/README.md` explains that Phase 1a includes neutral project and bundle metadata templates, while Phase 1b adds `templates/bundles/abac-access-map/` with repoctl metadata, inert native Databricks bundle configuration, SQL placeholders, and offline contract-test fixtures.
 
 ### Project Template
 
@@ -1180,7 +1188,7 @@ They make the required metadata obvious:
 - required bundle targets
 - dependency declaration shape
 
-They also make the intended sequence explicit: create a valid repo boundary first, then add Databricks-specific assets when the bundle spec calls for them.
+They also make the intended sequence explicit: use neutral templates for generic metadata boundaries, and use concrete templates only when a shipped bundle family has a focused contract.
 
 ### What Templates Do Not Do
 
@@ -1190,13 +1198,13 @@ Templates are not active projects or active bundles.
 
 Templates do not validate themselves through `repoctl validate` as active metadata. They are examples and scaffolds.
 
-Templates do not create `databricks.yml`, SQL, UDF code, resources, or tests for a real Databricks workload in Phase 1a.
+Neutral Phase 1a templates do not create `databricks.yml`, SQL, UDF code, resources, or tests for a real Databricks workload. The Phase 1b ABAC access-map template includes inert `databricks.yml`, SQL placeholders, and offline fixture/test scaffolding, but still creates no live Databricks resources.
 
 Templates do not install dependencies or create lockfiles.
 
 ### Phase 1b Template Shipped
 
-Phase 1b adds the first concrete bundle template:
+Phase 1b ships the concrete ABAC access-map template:
 
 ```text
 templates/bundles/abac-access-map/
@@ -1213,7 +1221,7 @@ Template scope in Phase 1a includes:
 - neutral project scaffold
 - neutral bundle metadata scaffold
 - README guidance for template purpose
-- metadata shapes aligned with `project.yaml` and `bundle.yaml`
+- metadata shapes aligned with `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only `bundle.yaml`
 - placeholders that make required fields visible
 
 ### Out Of Scope
@@ -1237,7 +1245,7 @@ The mental model to keep:
 - templates are approved starting points, not active bundle units
 - Phase 1a templates are metadata-only
 - copied template values must be renamed to match real directories
-- real Databricks asset templates wait until Phase 1b dogfood work
+- Phase 1b adds the concrete ABAC access-map template, still with no live Databricks deployment
 - templates should preserve the project/bundle/dependency boundaries already described
 
 If this is clear, the next section, CI/CD and evidence phasing, can explain which automation has shipped and which enforcement remains pending.

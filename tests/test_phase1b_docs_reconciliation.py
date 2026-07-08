@@ -103,6 +103,83 @@ def test_shipped_doc_reconciles_phase_1b_without_claiming_deployments() -> None:
     assert "Phase 1b should add" not in shipped
 
 
+def test_shipped_template_section_lists_neutral_and_abac_templates() -> None:
+    shipped = text(SHIPPED_DOC)
+    templates = section_between(shipped, "## Templates", "## CI/CD And Evidence Phasing")
+
+    assert_contains_all(
+        templates,
+        [
+            "Phase 1a ships neutral templates",
+            "Phase 1b ships the concrete ABAC access-map template",
+            "templates/bundles/abac-access-map/",
+            "repoctl.bundle.yaml",
+            "databricks.yml",
+            "metadata shapes aligned with `project.yaml`, `repoctl.bundle.yaml`, "
+            "and legacy metadata-only `bundle.yaml`",
+        ],
+    )
+    assert "defers ABAC-specific templates" not in templates
+    assert "real Databricks asset templates wait until Phase 1b" not in templates
+
+
+def test_shipped_metadata_checkpoint_uses_current_bundle_metadata_filenames() -> None:
+    shipped = text(SHIPPED_DOC)
+    metadata = section_between(shipped, "## Metadata Contracts", "## Local Toolchain")
+    checkpoint = section_between(
+        metadata,
+        "### Metadata Contract Checkpoint",
+        "If this is clear",
+    )
+
+    assert_contains_all(
+        checkpoint,
+        [
+            "`repoctl.bundle.yaml`",
+            "legacy metadata-only `bundle.yaml`",
+            "bundle metadata tells the repo which bundle units exist",
+        ],
+    )
+    assert "`bundle.yaml` tells the repo which bundle units exist" not in checkpoint
+
+
+def test_validation_commands_describe_current_bundle_count_and_metadata_paths() -> None:
+    shipped = text(SHIPPED_DOC)
+    validation = section_between(shipped, "## Validation Commands", "## Changed-Bundle Detection")
+
+    assert_contains_all(
+        validation,
+        [
+            "`uv run repoctl validate` owns metadata contract validation. It proves "
+            "discovered `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only "
+            "`bundle.yaml` files satisfy the shipped metadata rules.",
+            "`repoctl discover` proves the current repository has one project, "
+            "`platform-governance`, and two bundles: `foundation-smoke` and "
+            "`abac-jira-project-access`.",
+            "Run `repoctl validate` after editing `project.yaml`, `repoctl.bundle.yaml`, "
+            "legacy metadata-only `bundle.yaml`, or the metadata validator.",
+        ],
+    )
+    assert "one inert bundle, `foundation-smoke`" not in validation
+    assert "discovered `project.yaml` and `bundle.yaml` files" not in validation
+
+
+def test_design_doc_pr_workflow_matches_shipped_phase_1b_checks() -> None:
+    design = text(DESIGN_DOC)
+    ci_cd = section_between(design, "# GitHub Actions CI/CD", "# Evidence")
+    pr_workflow = section_between(ci_cd, "Pull request workflow:", "UAT workflow:")
+
+    assert_contains_all(
+        pr_workflow,
+        [
+            "Run `pytest`, `ruff`, and `prek`.",
+            "Run `repoctl discover` and `repoctl validate`.",
+            "Compute changed bundles and dependents into the job summary.",
+        ],
+    )
+    assert "Run Databricks bundle validation for changed bundles" not in pr_workflow
+
+
 def test_templates_readme_lists_phase_1b_abac_template() -> None:
     templates_readme = text(TEMPLATES_README)
 
