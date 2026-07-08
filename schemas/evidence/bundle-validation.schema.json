@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/evidence/bundle-validation.schema.json",
+  "title": "DAB Evidence Bundle Validation",
+  "description": "Strict CI evidence artifact for bundle validation results, written at runtime as bundle-validate-<target>.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundle", "target", "status"],
+  "properties": {
+    "bundle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "enum": ["dev", "uat", "prod"]
+    },
+    "status": {
+      "const": "passed"
+    }
+  }
+}

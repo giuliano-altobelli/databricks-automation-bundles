@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/evidence/abac-contract-tests.schema.json",
+  "title": "DAB Evidence ABAC Contract Tests",
+  "description": "Strict CI evidence artifact proving ABAC contract tests passed for a bundle target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundle", "target", "status"],
+  "properties": {
+    "bundle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "enum": ["dev", "uat", "prod"]
+    },
+    "status": {
+      "const": "passed"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/evidence/changed-bundles.schema.json",
+  "title": "DAB Evidence Changed Bundles",
+  "description": "Strict CI evidence artifact listing bundle paths detected as changed for enforcement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["changed_bundles"],
+  "properties": {
+    "changed_bundles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

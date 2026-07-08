@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/evidence/repo-validation.schema.json",
+  "title": "DAB Evidence Repo Validation",
+  "description": "Strict CI evidence artifact proving repository-level validation completed successfully.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "const": "passed"
+    }
+  }
+}
