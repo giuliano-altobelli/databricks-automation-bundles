@@ -16,7 +16,7 @@ class ChangedResult:
 
 DOC_PATHS = ("docs/", "README.md", "ARCHITECTURE.md")
 ALL_BUNDLE_PREFIXES = ("libs/", "schemas/", "templates/", "tools/", ".github/")
-ALL_BUNDLE_FILES = {"pyproject.toml", "uv.lock", "prek.toml"}
+ALL_BUNDLE_FILES = {"pyproject.toml", "uv.lock", "prek.toml", "justfile"}
 
 
 def classify_changed_files(root: Path, changed_files: list[str]) -> ChangedResult:

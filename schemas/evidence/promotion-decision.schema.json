@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/databricks-automation-bundles/evidence/promotion-decision.schema.json",
+  "title": "DAB Evidence Promotion Decision",
+  "description": "Strict CI evidence artifact recording an approved promotion decision for a bundle target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundle", "target", "decision"],
+  "properties": {
+    "bundle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "enum": ["dev", "uat", "prod"]
+    },
+    "decision": {
+      "const": "approved"
+    }
+  }
+}

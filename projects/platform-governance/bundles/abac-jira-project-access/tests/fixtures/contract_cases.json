@@ -1,0 +1,68 @@
+[
+  {
+    "name": "allows_read_access_level",
+    "principal": "alice@example.com",
+    "project_key": "OPS",
+    "expected": true
+  },
+  {
+    "name": "allows_admin_view_access_level",
+    "principal": "bob@example.com",
+    "project_key": "OPS",
+    "expected": true
+  },
+  {
+    "name": "fails_closed_when_principal_is_null",
+    "principal": null,
+    "project_key": "OPS",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_project_key_is_null",
+    "principal": "alice@example.com",
+    "project_key": null,
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_no_matching_row",
+    "principal": "missing@example.com",
+    "project_key": "MISSING",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_row_is_inactive",
+    "principal": "inactive@example.com",
+    "project_key": "OPS",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_access_level_is_unknown",
+    "principal": "unknown-level@example.com",
+    "project_key": "OPS",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_valid_from_is_in_future",
+    "principal": "future@example.com",
+    "project_key": "OPS",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_expires_at_is_not_greater_than_fixed_time",
+    "principal": "expired@example.com",
+    "project_key": "OPS",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_only_wrong_project_matches",
+    "principal": "wrong-project@example.com",
+    "project_key": "OPS",
+    "expected": false
+  },
+  {
+    "name": "fails_closed_when_only_wrong_principal_matches",
+    "principal": "wrong-principal@example.com",
+    "project_key": "OPS",
+    "expected": false
+  }
+]

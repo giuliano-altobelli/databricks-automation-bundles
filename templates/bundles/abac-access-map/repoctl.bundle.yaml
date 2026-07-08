@@ -1,0 +1,20 @@
+version: 1
+name: __BUNDLE_NAME__
+type: abac-access-map
+owner:
+  team: __OWNER_TEAM__
+review:
+  policy: owner-approval
+targets:
+  dev:
+    mode: development
+    default: true
+  uat:
+    mode: validation
+    ci_only: true
+  prod:
+    mode: production
+    ci_only: true
+depends_on:
+  bundles: []
+  libs: []

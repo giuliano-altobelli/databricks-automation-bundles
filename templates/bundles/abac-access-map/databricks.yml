@@ -1,0 +1,12 @@
+# This native bundle boundary is intentionally inert/offline; SQL is tested but not deployed.
+bundle:
+  name: __BUNDLE_NAME__
+
+targets:
+  dev:
+    mode: development
+    default: true
+  uat:
+    mode: production
+  prod:
+    mode: production

@@ -23,7 +23,7 @@ Phase 1 is delivered in two slices. This document remains the target design for 
 
 ## Phase 1a: Repository Foundation (shipped 2026-06-25)
 
-Tracked in [Databricks DAB Monorepo Foundation Phase 1](../implementation/databricks-dab-monorepo-foundation-phase-1.md). The tracker predates this phasing split and is titled "Phase 1".
+Tracked in [Databricks DAB Monorepo Foundation Phase 1](../exec-plans/active/databricks-dab-monorepo-foundation-phase-1.md). The tracker predates this phasing split and is titled "Phase 1".
 
 Shipped:
 
@@ -34,15 +34,17 @@ Shipped:
 - one inert sample project and bundle metadata fixture
 - offline tests and a recorded local verification log
 
-## Phase 1b: Enforcement and Dogfood (pending)
+## Phase 1b: Enforcement and Dogfood (shipped 2026-07-08)
 
 - root `justfile` with `just bootstrap` and `just verify` wrappers over the raw `uv` commands, keeping raw `uv` fallback documented
 - PR-validation GitHub Actions workflow: `uv` bootstrap, `prek`, `repoctl validate`, and changed-bundle computation
 - `repoctl evidence check` for promotion-decision evidence
-- ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access/` with its focused `SPEC.md`
+- ABAC dogfood bundle `projects/platform-governance/bundles/abac-jira-project-access/` with its focused `SPEC.md`, SQL sources, offline fail-closed contract fixtures, inert `databricks.yml`, and `repoctl.bundle.yaml` metadata
 - concrete `abac-access-map` bundle template
 
-UAT and production deployment workflows and CI evidence artifact upload follow after phase 1b.
+Native Databricks bundle roots use `repoctl.bundle.yaml` for monorepo metadata because `bundle.yaml` can be interpreted by the Databricks CLI as a second root config next to `databricks.yml`. Keeping repoctl metadata in `repoctl.bundle.yaml` avoids that Databricks CLI root-config collision. Metadata-only and legacy bundles may still use `bundle.yaml`.
+
+UAT and production deployment workflows and CI evidence artifact upload remain after phase 1b.
 
 # Ownership Boundary
 
@@ -107,7 +109,7 @@ Recommended phase-1 shape:
             └── abac-jira-project-access/
                 ├── README.md
                 ├── SPEC.md
-                ├── bundle.yaml
+                ├── repoctl.bundle.yaml
                 ├── databricks.yml
                 ├── pyproject.toml    # optional; only when the bundle needs Python deps
                 ├── uv.lock           # optional; scoped to this bundle
@@ -116,7 +118,7 @@ Recommended phase-1 shape:
                 └── tests/
 ```
 
-`databricks.yml` remains the native Databricks bundle definition. `project.yaml` and `bundle.yaml` are monorepo governance metadata used by `repoctl` and GitHub Actions.
+`databricks.yml` remains the native Databricks bundle definition. `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only `bundle.yaml` files are monorepo governance metadata used by `repoctl` and GitHub Actions.
 
 `templates/README.md` explains the approved scaffold path. Phase 1a ships generic project and bundle templates; phase 1b adds the concrete `abac-access-map` template. Other future bundle templates are intentionally not defined in this design.
 
@@ -206,13 +208,13 @@ Phase-1 commands:
 uv run repoctl discover
 uv run repoctl validate
 uv run repoctl changed --base origin/main
-uv run repoctl evidence check --bundle <path> --target prod  # phase 1b
+uv run repoctl evidence check --bundle <path> --target prod --evidence <run-dir>
 ```
 
 Initial responsibilities:
 
 - discover projects and bundles
-- validate `project.yaml` and `bundle.yaml`
+- validate `project.yaml`, `repoctl.bundle.yaml`, and legacy metadata-only `bundle.yaml`
 - compute changed bundles and dependents
 - distinguish docs-only changes from deploy-affecting changes
 - validate promotion evidence before `prod`
@@ -226,10 +228,9 @@ GitHub Actions is the assumed CI/CD system.
 Pull request workflow:
 
 1. Bootstrap the root `uv` tooling environment.
-2. Run `prek`.
-3. Run `repoctl validate`.
-4. Compute changed bundles and dependents.
-5. Run Databricks bundle validation for changed bundles.
+2. Run `pytest`, `ruff`, and `prek`.
+3. Run `repoctl discover` and `repoctl validate`.
+4. Compute changed bundles and dependents into the job summary.
 
 UAT workflow:
 
@@ -281,7 +282,7 @@ docs/adr/
 projects/<project>/README.md
 projects/<project>/project.yaml
 projects/<project>/bundles/<bundle>/README.md
-projects/<project>/bundles/<bundle>/bundle.yaml
+projects/<project>/bundles/<bundle>/repoctl.bundle.yaml
 ```
 
 Do not require a full `SPEC.md` for every small bundle from day one. Require a focused spec when a bundle introduces a governance-sensitive pattern, a new shared contract, or a new resource family.
@@ -355,7 +356,7 @@ Time targets, such as cold bootstrap under 10 minutes or pull request feedback u
 
 # Out of Scope
 
-- Implementing the monorepo in this document; delivery is tracked in `docs/implementation/` and summarized in [Phasing](#phasing).
+- Implementing the monorepo in this document; delivery is tracked in `docs/exec-plans/` and summarized in [Phasing](#phasing).
 - Creating live Databricks resources.
 - Migrating the `databricks-infra` Terraform repository into this monorepo.
 - Designing every Databricks bundle resource type.
@@ -373,4 +374,4 @@ Time targets, such as cold bootstrap under 10 minutes or pull request feedback u
 - [databricks-infra Terraform repository](https://github.com/giuliano-altobelli/databricks-infra.git)
 - [Databricks ABAC Governance Design Doc](./databricks-abac-governance-design.md)
 - [ADR 0001: Use `prod_security` as the Platform Governance Catalog](../adr/0001-platform-governance-catalog.md)
-- [Phase 1a Implementation Tracker](../implementation/databricks-dab-monorepo-foundation-phase-1.md)
+- [Phase 1a Implementation Tracker](../exec-plans/active/databricks-dab-monorepo-foundation-phase-1.md)

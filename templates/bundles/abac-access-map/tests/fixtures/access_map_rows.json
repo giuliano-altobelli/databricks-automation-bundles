@@ -1,0 +1,98 @@
+[
+  {
+    "effective_principal": "alice@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-read",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "bob@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "admin_view",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-admin",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "inactive@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "read",
+    "is_active": false,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-inactive",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "unknown-level@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "write",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-unknown-level",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "future@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-02-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-future",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "expired@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": "2026-01-15T12:00:00Z",
+    "source_decision_id": "decision-expired",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "wrong-project@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "EU-CENTRAL",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-wrong-key",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  },
+  {
+    "effective_principal": "other@example.com",
+    "principal_type": "user",
+    "__ACCESS_KEY__": "US-WEST",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null,
+    "source_decision_id": "decision-wrong-principal",
+    "source_system": "example",
+    "updated_at": "2026-01-15T00:00:00Z"
+  }
+]
