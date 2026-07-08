@@ -9,6 +9,7 @@ from typing import Any
 
 from repoctl.changes import classify_changed_files
 from repoctl.discovery import discover
+from repoctl.evidence import check_evidence_files
 from repoctl.validation import validate_repo
 
 
@@ -22,6 +23,17 @@ def main(argv: list[str] | None = None) -> int:
 
     changed_parser = subparsers.add_parser("changed", help="Classify changed files")
     changed_parser.add_argument("--base", required=True, help="Git ref to diff against")
+
+    evidence_parser = subparsers.add_parser("evidence", help="Check promotion evidence")
+    evidence_subparsers = evidence_parser.add_subparsers(
+        dest="evidence_command", required=True
+    )
+    evidence_check_parser = evidence_subparsers.add_parser(
+        "check", help="Check required evidence files"
+    )
+    evidence_check_parser.add_argument("--bundle", type=Path, required=True)
+    evidence_check_parser.add_argument("--target", required=True)
+    evidence_check_parser.add_argument("--evidence", type=Path, required=True)
 
     args = parser.parse_args(argv)
     root = args.root.resolve()
@@ -46,8 +58,31 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(_changed_to_json(root, result), indent=2, sort_keys=True))
         return 0
 
+    if args.command == "evidence":
+        if args.evidence_command == "check":
+            result = check_evidence_files(
+                _resolve_input_path(root, args.bundle),
+                args.target,
+                _resolve_input_path(root, args.evidence),
+            )
+            if result.ok:
+                print("Evidence ok")
+                return 0
+            print("Evidence check failed:", file=sys.stderr)
+            for error in result.errors:
+                print(f"- {error}", file=sys.stderr)
+            return 1
+        parser.error(f"unsupported evidence command {args.evidence_command}")
+        return 2
+
     parser.error(f"unsupported command {args.command}")
     return 2
+
+
+def _resolve_input_path(root: Path, path: Path) -> Path:
+    if path.is_absolute():
+        return path.resolve()
+    return (root / path).resolve()
 
 
 def _git_changed_files(root: Path, base: str) -> list[str]:
