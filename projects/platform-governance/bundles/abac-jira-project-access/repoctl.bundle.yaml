@@ -9,8 +9,9 @@ targets:
   dev:
     mode: development
     default: true
+    local: true
   uat:
-    mode: validation
+    mode: production
     ci_only: true
   prod:
     mode: production

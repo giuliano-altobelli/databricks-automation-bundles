@@ -5,6 +5,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "pr-validation.yml"
+BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-project-access"
 
 
 def recipe_commands(justfile_text: str, recipe_name: str) -> list[str]:
@@ -75,8 +76,8 @@ def test_pr_validation_workflow_exists_and_has_pr_trigger() -> None:
     parsed = workflow()
 
     triggers = parsed.get("on") or parsed.get(True)
-    assert "pull_request" in triggers
-    assert "workflow_dispatch" in triggers
+    assert set(triggers) == {"pull_request", "workflow_dispatch"}
+    assert "pull_request_target" not in triggers
 
 
 def test_pr_validation_workflow_has_full_local_verify_parity() -> None:
@@ -104,12 +105,80 @@ def test_pr_validation_workflow_writes_changed_bundle_summary() -> None:
     assert "changed-bundles.json" in shell
 
 
-def test_pr_validation_workflow_does_not_deploy_or_promote() -> None:
-    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8") if WORKFLOW_PATH.exists() else ""
+def test_pr_validation_job_never_receives_databricks_credentials() -> None:
+    validate = workflow()["jobs"]["validate"]
+    validate_text = str(validate)
+
+    assert "if" not in validate
+    assert "environment" not in validate
+    assert "env" not in validate
+    assert "DATABRICKS_" not in validate_text
+    assert "BUNDLE_VAR_" not in validate_text
+    assert all(
+        step.get("uses", "").split("@")[0] != "databricks/setup-cli"
+        for step in validate["steps"]
+    )
+    assert "databricks bundle" not in workflow_run_text()
+
+
+def test_pr_deploy_job_is_gated_to_trusted_same_repository_pull_requests() -> None:
+    deploy = workflow()["jobs"]["deploy-uat"]
+    condition = " ".join(deploy["if"].split())
+
+    assert deploy["needs"] == "validate"
+    assert deploy["environment"] == "uat"
+    assert condition == (
+        "github.event_name == 'pull_request' && "
+        "github.event.pull_request.head.repo.full_name == github.repository && "
+        "github.event.pull_request.user.login != 'dependabot[bot]'"
+    )
+    assert deploy["concurrency"] == {
+        "group": "abac-jira-project-access-uat",
+        "cancel-in-progress": False,
+    }
+
+
+def test_pr_deploy_job_uses_oauth_m2m_and_expected_uat_commands() -> None:
+    deploy = workflow()["jobs"]["deploy-uat"]
+    setup_step = next(
+        step for step in deploy["steps"] if step.get("uses", "").startswith("databricks/setup-cli@")
+    )
+    command_step = next(
+        step for step in deploy["steps"] if "databricks bundle" in step.get("run", "")
+    )
+
+    assert setup_step["uses"] == "databricks/setup-cli@v1.7.0"
+    assert command_step["working-directory"] == BUNDLE_ROOT
+    assert executable_commands(command_step["run"]) == [
+        "databricks bundle validate -t uat",
+        "databricks bundle deploy -t uat",
+        "databricks bundle run -t uat apply_abac_jira_project_access",
+    ]
+    assert command_step["env"] == {
+        "DATABRICKS_AUTH_TYPE": "oauth-m2m",
+        "DATABRICKS_HOST": "${{ vars.DATABRICKS_HOST }}",
+        "DATABRICKS_CLIENT_ID": "${{ vars.DATABRICKS_CLIENT_ID }}",
+        "DATABRICKS_CLIENT_SECRET": "${{ secrets.DATABRICKS_CLIENT_SECRET }}",
+        "BUNDLE_VAR_sql_warehouse_id": "${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}",
+        "BUNDLE_VAR_run_as_service_principal_name": (
+            "${{ vars.DATABRICKS_CLIENT_ID }}"
+        ),
+    }
+    assert "env" not in deploy
+    assert "id-token" not in str(deploy)
+
+
+def test_pr_workflow_does_not_target_dev_prod_or_upload_evidence() -> None:
+    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
     forbidden_fragments = [
-        "databricks bundle deploy",
+        "-t dev",
+        "-t prod",
+        "DATABRICKS_DEV_",
+        "DATABRICKS_PROD_",
         "repoctl evidence check",
         "repoctl evidence upload",
+        "actions/upload-artifact",
+        "pull_request_target",
         "promotion",
         "promote",
     ]

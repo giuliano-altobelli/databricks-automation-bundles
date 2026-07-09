@@ -161,10 +161,20 @@ def test_abac_access_map_template_materializes_to_valid_testable_bundle(
     assert [bundle.name for bundle in discovery.bundles] == [MATERIALIZED_BUNDLE]
     assert discovery.bundles[0].metadata_path == bundle_root / "repoctl.bundle.yaml"
     assert discovery.bundles[0].metadata["type"] == "abac-access-map"
+    assert discovery.bundles[0].metadata["targets"] == {
+        "dev": {"mode": "development", "default": True, "local": True},
+        "uat": {"mode": "production", "ci_only": True},
+        "prod": {"mode": "production", "ci_only": True},
+    }
 
     native_databricks_config = load_metadata(bundle_root / "databricks.yml")
     assert set(native_databricks_config) == {"bundle", "targets"}
     assert native_databricks_config["bundle"]["name"] == MATERIALIZED_BUNDLE
+    assert native_databricks_config["targets"] == {
+        "dev": {"mode": "development", "default": True},
+        "uat": {"mode": "production"},
+        "prod": {"mode": "production"},
+    }
     assert "resources" not in native_databricks_config
     assert "include" not in native_databricks_config
     assert not (bundle_root / "bundle.yaml").exists()

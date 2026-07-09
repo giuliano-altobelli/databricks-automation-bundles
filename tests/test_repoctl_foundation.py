@@ -5,7 +5,10 @@ from pathlib import Path
 
 from repoctl.changes import classify_changed_files
 from repoctl.discovery import discover
+from repoctl.metadata import load_metadata
 from repoctl.validation import validate_repo
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def write_json_yaml(path: Path, data: dict) -> None:
@@ -35,8 +38,8 @@ def write_foundation_fixture(root: Path) -> Path:
             "owner": {"team": "platform-governance"},
             "review": {"policy": "owner-approval"},
             "targets": {
-                "dev": {"mode": "development", "default": True},
-                "uat": {"mode": "validation", "ci_only": True},
+                "dev": {"mode": "development", "default": True, "local": True},
+                "uat": {"mode": "production", "ci_only": True},
                 "prod": {"mode": "production", "ci_only": True},
             },
             "depends_on": {"bundles": [], "libs": []},
@@ -68,8 +71,8 @@ def test_discover_prefers_repoctl_bundle_metadata_when_present(tmp_path: Path) -
             "owner": {"team": "platform-governance"},
             "review": {"policy": "owner-approval"},
             "targets": {
-                "dev": {"mode": "development", "default": True},
-                "uat": {"mode": "validation", "ci_only": True},
+                "dev": {"mode": "development", "default": True, "local": True},
+                "uat": {"mode": "production", "ci_only": True},
                 "prod": {"mode": "production", "ci_only": True},
             },
             "depends_on": {"bundles": [], "libs": []},
@@ -90,6 +93,37 @@ def test_validate_accepts_minimal_foundation_metadata(tmp_path: Path) -> None:
 
     assert result.ok is True
     assert result.errors == []
+
+
+def test_active_bundle_schema_declares_dev_uat_prod_lifecycle() -> None:
+    schema = json.loads((ROOT / "schemas" / "bundle.schema.json").read_text(encoding="utf-8"))
+    targets = schema["properties"]["targets"]
+
+    assert targets["required"] == ["dev", "uat", "prod"]
+    assert set(targets["properties"]) == {"dev", "uat", "prod"}
+    assert targets["additionalProperties"] is False
+    assert set(targets["properties"]["dev"]["required"]) == {"mode", "default", "local"}
+    assert targets["properties"]["dev"]["properties"] == {
+        "mode": {"const": "development"},
+        "default": {"const": True},
+        "local": {"const": True},
+    }
+    for target in ("uat", "prod"):
+        assert set(targets["properties"][target]["required"]) == {"mode", "ci_only"}
+        assert targets["properties"][target]["properties"] == {
+            "mode": {"const": "production"},
+            "ci_only": {"const": True},
+        }
+
+
+def test_basic_bundle_template_declares_dev_uat_prod_lifecycle() -> None:
+    metadata = load_metadata(ROOT / "templates" / "bundle-basic" / "bundle.yaml")
+
+    assert metadata["targets"] == {
+        "dev": {"mode": "development", "default": True, "local": True},
+        "uat": {"mode": "production", "ci_only": True},
+        "prod": {"mode": "production", "ci_only": True},
+    }
 
 
 def test_validate_rejects_bundle_without_required_targets(tmp_path: Path) -> None:
@@ -113,7 +147,7 @@ def test_validate_rejects_bundle_without_required_targets(tmp_path: Path) -> Non
     errors = "\n".join(result.errors)
     assert (
         "projects/platform-governance/bundles/foundation-smoke/repoctl.bundle.yaml "
-        "must declare targets: dev, prod, uat"
+        "must declare targets: dev, uat, prod"
     ) in errors
 
 
@@ -128,9 +162,9 @@ def test_validate_rejects_metadata_outside_schema_contract(tmp_path: Path) -> No
             "owner": {"team": "platform-governance"},
             "review": {"policy": "owner-approval"},
             "targets": {
-                "dev": {"mode": "development", "default": True},
-                "qa": {"mode": "validation", "ci_only": True},
-                "uat": {"mode": "validation", "ci_only": True},
+                "dev": {"mode": "development", "default": True, "local": True},
+                "qa": {"mode": "production", "ci_only": True},
+                "uat": {"mode": "production", "ci_only": True},
                 "prod": {"mode": "production", "ci_only": True},
             },
             "depends_on": {"bundles": [], "libs": [], "unknown": []},
@@ -143,8 +177,36 @@ def test_validate_rejects_metadata_outside_schema_contract(tmp_path: Path) -> No
     assert result.ok is False
     errors = "\n".join(result.errors)
     assert "unknown field unexpected" in errors
-    assert "targets may only declare: dev, prod, uat" in errors
+    assert "targets may only declare: dev, uat, prod" in errors
     assert "depends_on may only declare: bundles, libs" in errors
+
+
+def test_validate_rejects_noncanonical_lifecycle_target_settings(tmp_path: Path) -> None:
+    bundle_root = write_foundation_fixture(tmp_path)
+    write_json_yaml(
+        bundle_root / "bundle.yaml",
+        {
+            "version": 1,
+            "name": "foundation-smoke",
+            "type": "generic",
+            "owner": {"team": "platform-governance"},
+            "review": {"policy": "owner-approval"},
+            "targets": {
+                "dev": {"mode": "development", "default": True, "local": False},
+                "uat": {"mode": "validation", "ci_only": True},
+                "prod": {"mode": "production", "ci_only": False},
+            },
+            "depends_on": {"bundles": [], "libs": []},
+        },
+    )
+
+    result = validate_repo(tmp_path)
+
+    assert result.ok is False
+    errors = "\n".join(result.errors)
+    assert "dev target must be local default development mode" in errors
+    assert "uat target must be CI-only production mode" in errors
+    assert "prod target must be CI-only production mode" in errors
 
 
 def test_validate_rejects_names_outside_schema_pattern(tmp_path: Path) -> None:
@@ -291,8 +353,8 @@ def test_repoctl_cli_validate_reports_errors(tmp_path: Path) -> None:
             "owner": {"team": "platform-governance"},
             "review": {"policy": "owner-approval"},
             "targets": {
-                "dev": {"mode": "development", "default": True},
-                "uat": {"mode": "validation", "ci_only": True},
+                "dev": {"mode": "development", "default": True, "local": True},
+                "uat": {"mode": "production", "ci_only": True},
                 "prod": {"mode": "production", "ci_only": True},
             },
             "depends_on": {"bundles": [], "libs": []},

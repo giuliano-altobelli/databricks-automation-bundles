@@ -4,6 +4,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Local verify parity
@@ -51,3 +54,38 @@ jobs:
             cat changed-bundles.json
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-uat:
+    name: Deploy ABAC Jira project access to UAT
+    needs: validate
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    environment: uat
+    concurrency:
+      group: abac-jira-project-access-uat
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v1.7.0
+
+      - name: Validate, deploy, and apply UAT bundle
+        working-directory: projects/platform-governance/bundles/abac-jira-project-access
+        env:
+          DATABRICKS_AUTH_TYPE: oauth-m2m
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          BUNDLE_VAR_sql_warehouse_id: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
+          BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          databricks bundle validate -t uat
+          databricks bundle deploy -t uat
+          databricks bundle run -t uat apply_abac_jira_project_access

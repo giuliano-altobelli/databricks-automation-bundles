@@ -1,0 +1,63 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Local verify parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+
+      - name: Bootstrap tooling
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run root verification
+        run: just verify
+
+  deploy-prod:
+    name: Deploy ABAC Jira project access to prod
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: abac-jira-project-access-prod
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v1.7.0
+
+      - name: Validate, deploy, and apply production bundle
+        working-directory: projects/platform-governance/bundles/abac-jira-project-access
+        env:
+          DATABRICKS_AUTH_TYPE: oauth-m2m
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          BUNDLE_VAR_sql_warehouse_id: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
+          BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          databricks bundle validate -t prod
+          databricks bundle deploy -t prod
+          databricks bundle run -t prod apply_abac_jira_project_access

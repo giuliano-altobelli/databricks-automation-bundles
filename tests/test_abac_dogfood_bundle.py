@@ -22,11 +22,26 @@ EXPECTED_ACCESS_MAP_COLUMNS = {
     "updated_at": ("TIMESTAMP", "NOT NULL"),
 }
 SQL_ROOT = BUNDLE_ROOT / "sql"
-ACCESS_MAP_DDL = SQL_ROOT / "access_map_ddl.sql"
-CAN_READ_UDF = SQL_ROOT / "can_read_jira_project.sql"
+APPLY_SQL = SQL_ROOT / "apply.sql"
 JIRA_ROW_FILTER = SQL_ROOT / "jira_project_row_filter.sql"
 NATIVE_DAB_CONFIG = BUNDLE_ROOT / "databricks.yml"
 REPOCTL_BUNDLE_METADATA = BUNDLE_ROOT / "repoctl.bundle.yaml"
+EXPECTED_SQL_PARAMETERS = {
+    "access_map_catalog",
+    "access_map_schema",
+    "access_map_table",
+    "policy_catalog",
+    "policy_schema",
+    "policy_udf",
+}
+ACCESS_MAP_IDENTIFIER_PATTERN = (
+    r"identifier\s*\(\s*:access_map_catalog\s*\|\|\s*'\.'\s*\|\|\s*"
+    r":access_map_schema\s*\|\|\s*'\.'\s*\|\|\s*:access_map_table\s*\)"
+)
+POLICY_IDENTIFIER_PATTERN = (
+    r"identifier\s*\(\s*:policy_catalog\s*\|\|\s*'\.'\s*\|\|\s*"
+    r":policy_schema\s*\|\|\s*'\.'\s*\|\|\s*:policy_udf\s*\)"
+)
 
 
 def test_repo_validation_accepts_abac_dogfood_bundle_metadata() -> None:
@@ -51,24 +66,104 @@ def test_discovery_finds_abac_dogfood_bundle_with_expected_metadata() -> None:
     assert bundle.metadata["type"] == "abac-access-map"
 
 
-def test_abac_dogfood_native_bundle_boundary_is_inert() -> None:
+def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     assert NATIVE_DAB_CONFIG.is_file()
     assert REPOCTL_BUNDLE_METADATA.is_file()
     assert not (BUNDLE_ROOT / "bundle.yaml").exists()
 
     config = load_metadata(NATIVE_DAB_CONFIG)
 
-    assert set(config) == {"bundle", "targets"}
+    assert set(config) == {"bundle", "variables", "resources", "targets"}
     assert config["bundle"]["name"] == "abac-jira-project-access"
+    assert config["bundle"]["databricks_cli_version"] == ">= 1.7.0"
+    assert set(config["variables"]) == EXPECTED_SQL_PARAMETERS | {
+        "sql_warehouse_id",
+        "run_as_service_principal_name",
+    }
+    assert config["variables"]["run_as_service_principal_name"]["default"] == (
+        "${workspace.current_user.userName}"
+    )
     assert set(config["targets"]) == {"dev", "uat", "prod"}
     assert config["targets"]["dev"]["mode"] == "development"
     assert config["targets"]["dev"]["default"] is True
     assert config["targets"]["uat"]["mode"] == "production"
     assert config["targets"]["prod"]["mode"] == "production"
-    assert "resources" not in config
     assert "include" not in config
-    for target in config["targets"].values():
-        assert "resources" not in target
+
+    expected_target_values = {
+        "dev": {
+            "access_map_catalog": "personal",
+            "access_map_schema": "${workspace.current_user.short_name}",
+            "access_map_table": "jira_project_access",
+            "policy_catalog": "personal",
+            "policy_schema": "${workspace.current_user.short_name}",
+            "policy_udf": "can_read_jira_project",
+        },
+        "uat": {
+            "access_map_catalog": "dev_security",
+            "access_map_schema": "access_maps",
+            "access_map_table": "jira_project_access",
+            "policy_catalog": "dev_security",
+            "policy_schema": "policies",
+            "policy_udf": "can_read_jira_project",
+        },
+        "prod": {
+            "access_map_catalog": "prod_security",
+            "access_map_schema": "access_maps",
+            "access_map_table": "jira_project_access",
+            "policy_catalog": "prod_security",
+            "policy_schema": "policies",
+            "policy_udf": "can_read_jira_project",
+        },
+    }
+    for target_name, expected_values in expected_target_values.items():
+        target = config["targets"][target_name]
+        assert target["variables"] == expected_values
+
+    assert "run_as" not in config["targets"]["dev"]
+    for target_name in ("uat", "prod"):
+        target = config["targets"][target_name]
+        assert target["run_as"] == {
+            "service_principal_name": "${var.run_as_service_principal_name}"
+        }
+
+    assert config["targets"]["dev"]["workspace"]["root_path"] == (
+        "/Workspace/Users/${workspace.current_user.userName}/.bundle/"
+        "${bundle.name}/${bundle.target}"
+    )
+    for target_name in ("uat", "prod"):
+        assert config["targets"][target_name]["workspace"]["root_path"] == (
+            "/Workspace/Users/${var.run_as_service_principal_name}/.bundle/"
+            "${bundle.name}/${bundle.target}"
+        )
+
+    job = config["resources"]["jobs"]["apply_abac_jira_project_access"]
+    assert job["name"] == "apply_abac_jira_project_access"
+    assert job["max_concurrent_runs"] == 1
+    assert len(job["tasks"]) == 1
+    task = job["tasks"][0]
+    assert task["task_key"] == "apply_abac_jira_project_access"
+    assert task["sql_task"]["file"] == {
+        "path": "./sql/apply.sql",
+        "source": "WORKSPACE",
+    }
+    assert task["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
+    assert task["sql_task"]["parameters"] == {
+        name: f"${{var.{name}}}" for name in EXPECTED_SQL_PARAMETERS
+    }
+
+
+def test_abac_dogfood_native_bundle_does_not_embed_authentication_credentials() -> None:
+    config_text = NATIVE_DAB_CONFIG.read_text(encoding="utf-8").lower()
+
+    for forbidden in (
+        "client_secret",
+        "databricks_token",
+        "personal access token",
+        "dbc-86214b5d-e911",
+        "dbc-cc553e0d-3fbe",
+    ):
+        assert forbidden not in config_text
 
 
 def load_spec() -> str:
@@ -103,7 +198,7 @@ def strip_sql_line_comments(sql: str) -> str:
 def extract_access_map_ddl_columns(sql: str) -> dict[str, tuple[str, str]]:
     match = re.search(
         r"create\s+(?:or\s+replace\s+)?table\s+(?:if\s+not\s+exists\s+)?"
-        r"prod_security\.access_maps\.jira_project_access\s*\((?P<columns>.*?)\)",
+        r"identifier\s*\([^)]*\)\s*\((?P<columns>.*?)\)",
         sql,
         flags=re.IGNORECASE | re.DOTALL,
     )
@@ -139,30 +234,36 @@ def extract_allowed_access_levels(spec: str) -> set[str]:
     return set(re.findall(r"`([a-z_]+)`", match.group("levels")))
 
 
-def test_abac_dogfood_spec_keeps_original_boundary_decisions() -> None:
+def test_abac_dogfood_spec_defines_live_target_and_safety_boundaries() -> None:
     spec = load_spec()
+    normalized_spec = " ".join(spec.split())
 
     required_phrases = [
-        "Jira project-key row access",
+        "first live ABAC dogfood slice",
+        "personal.<current-user-short-name>.jira_project_access",
+        "personal.<current-user-short-name>.can_read_jira_project",
+        "dev_security.access_maps.jira_project_access",
         "prod_security.access_maps.jira_project_access",
+        "dev_security.policies.can_read_jira_project",
         "prod_security.policies.can_read_jira_project",
+        "`dev` is an attended, local-only target",
+        "`uat` is the shared pull-request target",
+        "CI must not deploy this target",
         "project_key",
         "one row per effective principal, project key, access level, and source decision",
         "fails closed to zero protected rows",
         "does not dynamically resolve group membership at query time",
-        "policy SQL contract/fragments",
         "Terraform remains owner of stable platform policy definitions",
         "live attachment/rollout controls",
-        "no live Databricks resources are created by this task",
-        "repo validation",
-        "changed-bundles",
-        "bundle validation",
-        "ABAC contract tests",
-        "approved promotion decision",
+        "creates or updates only",
+        "existing SQL warehouse",
+        "Production deploys only from the `main` workflow",
+        "Pull-request deployment uses the `uat` target",
+        "workflows do not upload evidence artifacts",
     ]
 
     for phrase in required_phrases:
-        assert phrase in spec
+        assert phrase in normalized_spec
 
 
 def test_abac_dogfood_spec_defines_sql_facing_access_map_columns() -> None:
@@ -180,50 +281,48 @@ def test_abac_dogfood_spec_defines_exact_access_level_contract() -> None:
 
 def test_abac_dogfood_spec_defines_udf_signature_and_policy_predicate() -> None:
     spec = load_spec()
+    normalized_spec = " ".join(spec.split())
 
     assert (
-        "`prod_security.policies.can_read_jira_project(principal STRING, project_key STRING)"
-        " RETURNS BOOLEAN`"
+        "`can_read_jira_project(principal STRING, project_key STRING) RETURNS BOOLEAN`"
     ) in spec
-    assert "current active access-map row for the principal/project" in spec
-    assert "access_level in (`read`, `admin_view`)" in spec
-    assert "current time within the effective range" in spec
-    assert "otherwise returns false" in spec
-    assert (
-        "`prod_security.policies.can_read_jira_project(current_user(), project_key)`"
-        in spec
-    )
-    assert "principal argument equivalent supplied by Databricks policy context" in spec
+    assert "target-resolved UDF signature" in spec
+    assert "current active access-map row for the principal/project" in normalized_spec
+    assert "access_level in (`read`, `admin_view`)" in normalized_spec
+    assert "current time within the effective range" in normalized_spec
+    assert "otherwise returns false" in normalized_spec
+    assert "`can_read_jira_project(current_user(), project_key)`" in spec
 
 
 def test_abac_dogfood_sql_source_files_exist() -> None:
-    assert ACCESS_MAP_DDL.is_file()
-    assert CAN_READ_UDF.is_file()
-    assert JIRA_ROW_FILTER.is_file()
+    assert {path.name for path in SQL_ROOT.glob("*.sql")} == {
+        "apply.sql",
+        "jira_project_row_filter.sql",
+    }
 
 
 def test_abac_dogfood_access_map_ddl_matches_spec_column_contract() -> None:
-    ddl = load_sql(ACCESS_MAP_DDL)
+    ddl = load_sql(APPLY_SQL)
 
-    assert "prod_security.access_maps.jira_project_access" in ddl
+    assert re.search(ACCESS_MAP_IDENTIFIER_PATTERN, ddl, flags=re.IGNORECASE)
     assert extract_access_map_ddl_columns(ddl) == EXPECTED_ACCESS_MAP_COLUMNS
     assert "enforcement index" in ddl.lower()
     assert "not an approval ledger" in ddl.lower()
 
 
 def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
-    udf = load_sql(CAN_READ_UDF)
+    udf = load_sql(APPLY_SQL)
     normalized = normalized_sql(udf)
     executable = normalized_sql(strip_sql_line_comments(udf))
 
-    assert "prod_security.policies.can_read_jira_project" in udf
+    assert re.search(POLICY_IDENTIFIER_PATTERN, udf, flags=re.IGNORECASE)
     assert re.search(
         r"\(\s*principal\s+STRING\s*,\s*project_key\s+STRING\s*\)\s*"
         r"RETURNS\s+BOOLEAN",
         udf,
         flags=re.IGNORECASE,
     )
-    assert "prod_security.access_maps.jira_project_access" in executable
+    assert re.search(ACCESS_MAP_IDENTIFIER_PATTERN, executable)
     assert "effective_principal = principal" not in normalized
     assert "project_key = project_key" not in normalized
     assert re.search(
@@ -253,9 +352,40 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
 def test_abac_dogfood_policy_fragment_calls_udf_and_preserves_terraform_boundary() -> None:
     policy = load_sql(JIRA_ROW_FILTER)
 
-    assert (
-        "prod_security.policies.can_read_jira_project(current_user(), project_key)"
-        in policy
+    assert re.search(
+        POLICY_IDENTIFIER_PATTERN
+        + r"\s*\(\s*current_user\(\)\s*,\s*project_key\s*\)",
+        policy,
+        flags=re.IGNORECASE,
     )
     assert "Terraform" in policy
     assert "live attachment/rollout controls" in policy
+
+
+def test_abac_dogfood_sql_destinations_are_entirely_target_driven() -> None:
+    apply_sql = strip_sql_line_comments(load_sql(APPLY_SQL))
+    row_filter = strip_sql_line_comments(load_sql(JIRA_ROW_FILTER))
+
+    assert set(re.findall(r":([a-z_]+)", apply_sql)) == EXPECTED_SQL_PARAMETERS
+    for target_catalog in ("personal", "dev_security", "prod_security"):
+        assert target_catalog not in apply_sql.lower()
+        assert target_catalog not in row_filter.lower()
+
+
+def test_abac_dogfood_apply_sql_has_one_copy_of_each_deployable_statement() -> None:
+    apply_sql = load_sql(APPLY_SQL)
+    executable = normalized_sql(strip_sql_line_comments(apply_sql))
+
+    assert len(re.findall(r"\bcreate table if not exists\b", executable)) == 1
+    assert len(re.findall(r"\bcreate or replace function\b", executable)) == 1
+    assert sum(line.rstrip().endswith(";") for line in apply_sql.splitlines()) == 2
+    assert "Databricks notebook source" not in apply_sql
+    assert "COMMAND ----------" not in apply_sql
+
+
+def test_abac_dogfood_apply_sql_does_not_attach_row_filters() -> None:
+    executable = normalized_sql(strip_sql_line_comments(load_sql(APPLY_SQL)))
+
+    assert "set row filter" not in executable
+    assert "row filter" not in executable
+    assert "alter table" not in executable
