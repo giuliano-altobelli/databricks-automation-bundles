@@ -3,20 +3,16 @@ bundle:
   databricks_cli_version: ">= 1.7.0"
 
 variables:
-  access_map_catalog:
-    description: Catalog containing the Jira project access map.
-  access_map_schema:
-    description: Schema containing the Jira project access map.
-  access_map_table:
-    description: Jira project access-map table name.
-  policy_catalog:
-    description: Catalog containing the Jira project policy UDF.
-  policy_schema:
-    description: Schema containing the Jira project policy UDF.
-  policy_udf:
-    description: Jira project policy UDF name.
+  access_map_schema_fqn:
+    description: Fully qualified schema containing the Jira project access map.
+  access_map_table_fqn:
+    description: Fully qualified Jira project access-map table name.
+  policy_schema_fqn:
+    description: Fully qualified schema containing the Jira project policy UDF.
+  policy_udf_fqn:
+    description: Fully qualified Jira project policy UDF name.
   sql_warehouse_id:
-    description: Existing SQL warehouse used by the apply job.
+    description: Existing serverless SQL warehouse used by the preflight and apply tasks.
   run_as_service_principal_name:
     description: Application ID of the shared-target deployment service principal.
     default: ${workspace.current_user.userName}
@@ -27,19 +23,26 @@ resources:
       name: apply_abac_jira_project_access
       max_concurrent_runs: 1
       tasks:
+        - task_key: preflight_target_schemas
+          sql_task:
+            file:
+              path: ./sql/preflight.sql
+              source: WORKSPACE
+            warehouse_id: ${var.sql_warehouse_id}
+            parameters:
+              access_map_schema_fqn: ${var.access_map_schema_fqn}
+              policy_schema_fqn: ${var.policy_schema_fqn}
         - task_key: apply_abac_jira_project_access
+          depends_on:
+            - task_key: preflight_target_schemas
           sql_task:
             file:
               path: ./sql/apply.sql
               source: WORKSPACE
             warehouse_id: ${var.sql_warehouse_id}
             parameters:
-              access_map_catalog: ${var.access_map_catalog}
-              access_map_schema: ${var.access_map_schema}
-              access_map_table: ${var.access_map_table}
-              policy_catalog: ${var.policy_catalog}
-              policy_schema: ${var.policy_schema}
-              policy_udf: ${var.policy_udf}
+              access_map_table_fqn: ${var.access_map_table_fqn}
+              policy_udf_fqn: ${var.policy_udf_fqn}
 
 targets:
   dev:
@@ -48,12 +51,10 @@ targets:
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
-      access_map_catalog: personal
-      access_map_schema: ${workspace.current_user.short_name}
-      access_map_table: jira_project_access
-      policy_catalog: personal
-      policy_schema: ${workspace.current_user.short_name}
-      policy_udf: can_read_jira_project
+      access_map_schema_fqn: personal.${workspace.current_user.short_name}
+      access_map_table_fqn: personal.${workspace.current_user.short_name}.jira_project_access
+      policy_schema_fqn: personal.${workspace.current_user.short_name}
+      policy_udf_fqn: personal.${workspace.current_user.short_name}.can_read_jira_project
   uat:
     mode: production
     workspace:
@@ -61,12 +62,10 @@ targets:
     run_as:
       service_principal_name: ${var.run_as_service_principal_name}
     variables:
-      access_map_catalog: dev_security
-      access_map_schema: access_maps
-      access_map_table: jira_project_access
-      policy_catalog: dev_security
-      policy_schema: policies
-      policy_udf: can_read_jira_project
+      access_map_schema_fqn: dev_security.access_maps
+      access_map_table_fqn: dev_security.access_maps.jira_project_access
+      policy_schema_fqn: dev_security.policies
+      policy_udf_fqn: dev_security.policies.can_read_jira_project
   prod:
     mode: production
     workspace:
@@ -74,9 +73,7 @@ targets:
     run_as:
       service_principal_name: ${var.run_as_service_principal_name}
     variables:
-      access_map_catalog: prod_security
-      access_map_schema: access_maps
-      access_map_table: jira_project_access
-      policy_catalog: prod_security
-      policy_schema: policies
-      policy_udf: can_read_jira_project
+      access_map_schema_fqn: prod_security.access_maps
+      access_map_table_fqn: prod_security.access_maps.jira_project_access
+      policy_schema_fqn: prod_security.policies
+      policy_udf_fqn: prod_security.policies.can_read_jira_project

@@ -2,24 +2,17 @@
 
 Status: revised design approved; implementation authorized
 Original date: 2026-07-08
-Revised: 2026-07-09
+Reconciled: 2026-07-09
 
 ## Context
 
 Phase 1b shipped the local/offline enforcement and ABAC dogfood slice. It added
-the ABAC Jira project access bundle, promotion evidence checks, PR validation,
-and the `abac-access-map` template, but intentionally kept the native
+the Jira project access bundle, promotion evidence checks, PR validation, and
+the `abac-access-map` template, while intentionally keeping the native
 Databricks bundle inert.
 
-This slice turns the dogfood bundle into a lightweight live deployment path.
-There are two Databricks workspaces:
-
-- `sandbox-infra`, which hosts both personal developer deployments and shared
-  UAT
-- `prod-infra`, which hosts production
-
-The logical lifecycle therefore has three targets without requiring a third
-workspace:
+This slice turns that bundle into a lightweight live deployment path. There
+are two Databricks workspaces and three logical lifecycle targets:
 
 | Target | Workspace | Unity Catalog namespace | Identity | Trigger |
 | --- | --- | --- | --- | --- |
@@ -27,9 +20,9 @@ workspace:
 | `uat` | `sandbox-infra` | `dev_security.access_maps` and `dev_security.policies` | UAT deployment service principal | trusted pull request CI |
 | `prod` | `prod-infra` | `prod_security.access_maps` and `prod_security.policies` | production deployment service principal | push to `main` |
 
-Unity Catalog object names have exactly three components: catalog, schema, and
-object. Consequently, both personal dev objects live in the developer's one
-schema. For example:
+Unity Catalog names have three components: catalog, schema, and object. Both
+personal dev objects therefore live directly in one developer schema, for
+example:
 
 - `personal.giulianoaltobelli.jira_project_access`
 - `personal.giulianoaltobelli.can_read_jira_project`
@@ -37,37 +30,44 @@ schema. For example:
 There is no additional `access_maps` or `policies` namespace below a personal
 schema.
 
-## Prerequisites
+## Preconditions and Ownership
 
-The following platform prerequisites are satisfied outside this bundle:
+Terraform, not this repository, owns the platform prerequisites:
 
-- the `personal` catalog exists in `sandbox-infra`
-- each developer's `personal.<user_key>` schema is Terraform-managed and grants
-  that developer the privileges required to create and replace the two objects
-- `dev_security.access_maps` and `dev_security.policies` exist in
-  `sandbox-infra`
-- `prod_security.access_maps` and `prod_security.policies` exist in
-  `prod-infra`
-- dedicated least-privilege UAT and production service principals exist and
-  can use their target SQL warehouses and namespaces
-- the UAT principal, not developers, has write access to the shared
-  `dev_security` namespaces
-- a SQL warehouse exists in each workspace
+- the `personal` catalog and each developer's `personal.<user_key>` schema
+- `dev_security.access_maps` and `dev_security.policies`
+- `prod_security.access_maps` and `prod_security.policies`
+- dedicated UAT and production deployment service principals
+- target SQL warehouses and their `CAN_USE` grants
+- Unity Catalog storage credentials, IAM roles, S3 buckets, and KMS keys
 
-The bundle does not create catalogs or schemas and does not manage their
-grants. Local Databricks CLI profiles must be authenticated after any CLI
-upgrade that invalidates the local credential cache.
+The least-privilege Unity Catalog contract is:
+
+- developer: `USE_CATALOG` on `personal`; `USE_SCHEMA`, `CREATE_TABLE`, and
+  `CREATE_FUNCTION` on their personal schema
+- UAT/production principal: `USE_CATALOG` on its catalog; `USE_SCHEMA` and
+  `CREATE_TABLE` on `access_maps`; `USE_SCHEMA` and `CREATE_FUNCTION` on
+  `policies`
+
+Each catalog storage role must grant `kms:Decrypt`, `kms:Encrypt`, and
+`kms:GenerateDataKey*` on the actual KMS key ARN, not an alias ARN. The bundle
+does not create or repair any of these prerequisites.
+
+The target SQL warehouses must be serverless or provide Databricks Runtime
+18.0-or-later SQL semantics. Parameter markers in SQL UDF bodies were verified
+on the sandbox serverless warehouse; earlier runtime semantics reject them.
 
 ## Goals
 
-- Let developers validate, deploy, and run the bundle locally in their own
-  personal schema without service-principal impersonation.
+- Let developers validate, deploy, and run locally in their own personal
+  schema without service-principal impersonation.
 - Deploy the same SQL to shared UAT from trusted pull requests using the UAT
   service principal.
 - Deploy the same SQL to production after a merge to `main` using the
   production service principal.
-- Keep SQL target-agnostic and select all destinations with bundle variables.
-- Restore `dev`, `uat`, and `prod` as the repository lifecycle contract.
+- Keep deployable SQL target-agnostic by passing fully qualified object names.
+- Enforce the repository-wide `dev`, `uat`, and `prod` lifecycle contract.
+- Fail fast on missing target schemas or warehouse configuration before DDL.
 
 ## Non-Goals
 
@@ -83,15 +83,15 @@ upgrade that invalidates the local credential cache.
 
 Local dev is an attended user-to-machine workflow. A developer authenticates
 the `sandbox-infra` Databricks CLI profile with OAuth and deploys as themself.
-The dev target omits `run_as`, so the developer owns the deployed job and
-personal Unity Catalog objects. It does not require `Service Principal User` on
-the UAT principal.
+The dev target omits `run_as`, so the developer owns the job and personal Unity
+Catalog objects. It does not require `Service Principal User` on the UAT
+principal.
 
 UAT and production are unattended workflows. GitHub Actions uses OAuth M2M
-client credentials for the dedicated service principal in each environment;
-developer PATs must never be placed in GitHub Actions.
+client credentials for the dedicated principal in each GitHub environment;
+developer PATs must never be placed in Actions.
 
-Each GitHub environment uses the same environment-scoped names:
+Each GitHub environment uses the same environment-scoped setting names:
 
 - variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
   `DATABRICKS_SQL_WAREHOUSE_ID`
@@ -100,8 +100,8 @@ Each GitHub environment uses the same environment-scoped names:
 The `uat` and `prod` environment boundaries supply different values without
 duplicating target names in every setting.
 
-OAuth M2M can be migrated to GitHub OIDC federation later without changing the
-bundle or SQL. That migration replaces each client secret with a Databricks
+OAuth M2M can migrate to GitHub OIDC federation later without changing the
+bundle or SQL. That migration replaces the client secret with a Databricks
 federation policy, uses `DATABRICKS_AUTH_TYPE=github-oidc`, and grants the
 deployment job `id-token: write`.
 
@@ -110,11 +110,11 @@ deployment job `id-token: write`.
 The native bundle and repository metadata declare exactly `dev`, `uat`, and
 `prod`:
 
-- `dev` uses development mode, is the default target, and is local-only
+- `dev` uses development mode, is the default, and is local-only
 - `uat` uses production mode and is CI-only
 - `prod` uses production mode and is CI-only
 
-Production mode is appropriate for UAT because the shared deployment must have
+Production mode is appropriate for UAT because the shared deployment requires
 one stable resource identity rather than developer-prefixed resources.
 
 ## Bundle Shape
@@ -122,12 +122,18 @@ one stable resource identity rather than developer-prefixed resources.
 `projects/platform-governance/bundles/abac-jira-project-access/databricks.yml`
 defines:
 
-- variables for the access-map catalog, schema, table, policy catalog, policy
-  schema, and policy UDF
+- variables for the complete access-map schema/table and policy schema/UDF
+  names
 - an externally supplied SQL warehouse ID
 - the three targets and their target-owned namespace values
 - one job resource, `apply_abac_jira_project_access`
-- one SQL task that executes `sql/apply.sql` with six named parameters
+- a read-only `preflight` SQL task
+- an `apply` SQL task that depends on successful preflight
+
+Preflight describes both target schemas through complete schema FQN
+parameters. This fails before DDL when a catalog/schema is missing. Successful
+task startup also proves that the configured warehouse exists and is usable.
+Preflight never creates or mutates a platform object.
 
 The live objects are:
 
@@ -139,41 +145,76 @@ The live objects are:
   `prod_security.policies.can_read_jira_project` in production
 - one target-specific Databricks job resource for applying the SQL
 
-## SQL Parameterization
+## SQL Contract
 
-`sql/apply.sql` is canonical and target-agnostic. The job passes:
+The deployable SQL assets are exactly:
 
-- `access_map_catalog`
-- `access_map_schema`
-- `access_map_table`
-- `policy_catalog`
-- `policy_schema`
-- `policy_udf`
+- `sql/preflight.sql`
+- `sql/apply.sql`
 
-DDL object names use Databricks SQL `IDENTIFIER(:param)`. The bundle never
-duplicates SQL by environment or hard-codes a production destination. Existing
-fail-closed ABAC contract tests remain authoritative for UDF behavior.
+`apply.sql` creates the table and UDF once, using only complete-name markers:
+
+- `access_map_table_fqn`
+- `policy_udf_fqn`
+
+Each target supplies those complete values directly. SQL uses
+`IDENTIFIER(:access_map_table_fqn)` and
+`IDENTIFIER(:policy_udf_fqn)` directly; it does not concatenate name parts with
+`|| '.' ||`. This avoids duplicate environment SQL and extra executable string
+literals.
+
+`sql/jira_project_row_filter.sql` is deliberately exempt from the
+target-agnostic rule. It is a stored production predicate contract consumed by
+Terraform's stable policy attachment controls; the bundle never executes it.
+Its header must state that boundary explicitly.
+
+Existing fail-closed ABAC contract tests remain authoritative for UDF behavior.
+Live verification also proves null input and missing grants return `false`.
 
 ## GitHub Actions Workflows
 
 ### Pull Request Workflow
 
-Every pull request runs uncredentialed local verification. A separate job runs
-only for same-repository, non-Dependabot pull requests, enters the `uat` GitHub
-environment, authenticates with the UAT service principal, and runs:
+Every pull request runs uncredentialed local verification. The validation job
+also emits the `repoctl changed` bundle list as a job output.
+
+A separate deployment job runs only when all of these conditions are true:
+
+- the event is `pull_request`
+- the pull request originates from this repository
+- the author is not Dependabot
+- changed-bundle classification contains
+  `projects/platform-governance/bundles/abac-jira-project-access`
+
+That job enters the `uat` GitHub environment, authenticates with the UAT
+service principal, and runs:
 
 1. `databricks bundle validate -t uat`
 2. `databricks bundle deploy -t uat`
 3. `databricks bundle run -t uat apply_abac_jira_project_access`
 
-Separating the jobs ensures fork and Dependabot code never executes on a runner
-that receives UAT credentials.
+Docs-only pull requests skip UAT. Root tooling changes still deploy because
+`repoctl changed` marks every bundle affected. Fork and Dependabot code never
+executes on a runner that receives UAT credentials.
 
 ### Main Workflow
 
-On a push to `main`, an uncredentialed verification job runs first. A separate
-job then enters the `prod` GitHub environment, authenticates with the
-production service principal, and runs:
+On push to `main`, an uncredentialed verification job runs before entering the
+`prod` environment. Checkout uses full history. After `uv sync`, CI runs the
+raw commands equivalent to the local `just verify` wrapper:
+
+1. `uv run pytest -q`
+2. `uv run ruff check tools tests`
+3. `uv run prek -c prek.toml run --all-files`
+4. `uv run repoctl discover`
+5. `uv run repoctl validate`
+6. `uv run repoctl changed --base "$CHANGED_BASE"`
+
+`CHANGED_BASE` is `github.event.before`, with `github.sha` as the fallback for
+a missing or all-zero before SHA.
+
+After verification, a separate production job authenticates with the prod
+service principal and runs:
 
 1. `databricks bundle validate -t prod`
 2. `databricks bundle deploy -t prod`
@@ -184,13 +225,13 @@ The production workflow does not upload evidence artifacts in this slice.
 ## GitHub Environments
 
 GitHub environments are repository-level secret scopes and deployment gates;
-they are not Databricks environments or workspaces.
+they are not Databricks workspaces.
 
-- Create environment `uat`, add the three variables and one secret described
-  above, and add selected branch pattern `refs/pull/*/merge`.
-- Create environment `prod`, add the same setting names with production values,
-  and restrict deployment to `main`.
-- A required reviewer is optional. Enabling one intentionally adds a manual
+- `uat` contains the three variables and one secret above and allows selected
+  branch pattern `refs/pull/*/merge`.
+- `prod` contains the same setting names with production values and allows
+  only branch `main`.
+- A required reviewer is optional. Enabling one intentionally adds manual
   approval to every deployment using that environment.
 
 ## Safety Rules
@@ -198,35 +239,52 @@ they are not Databricks environments or workspaces.
 - Dev deploys only as the authenticated developer and only to their personal
   schema.
 - Pull-request deployment targets shared UAT, never production.
+- Docs-only, fork, and Dependabot pull requests never deploy UAT.
 - Production deployment runs only from `main`.
-- Fork and Dependabot pull requests never receive Databricks credentials.
 - Developer PATs are local-only and never used by GitHub Actions.
 - The bundle does not create catalogs/schemas, attach row filters, write audit
   records, or mutate Terraform-owned platform controls.
-- UAT and production jobs use stable concurrency groups and are not cancelled
+- UAT and production use stable concurrency groups and are not cancelled
   midway through deployment.
+
+## Guard-Test Retirement
+
+Phase 1b tests that froze the inert/offline state are replaced deliberately:
+
+- the PR no-deploy guard now permits only the credentialed UAT deployment job
+  and still rejects dev/prod deployment, promotion, and evidence upload
+- the inert native-bundle guard now asserts the live three-target job shape
+- SQL tests assert full-FQN marker use and reject environment literals in
+  deployable SQL
+- policy-fragment tests preserve the Terraform-owned production predicate
+- preflight tests require read-only schema checks before apply
+- workflow tests require changed-bundle gating and environment credential
+  isolation
 
 ## Verification Strategy
 
-Offline tests prove:
+Offline verification proves:
 
 - `repoctl validate` requires the `dev`/`uat`/`prod` lifecycle contract
 - target modes and CI ownership are correct
 - personal dev, shared UAT, and production destinations are target-driven
+- deployable SQL uses complete-FQN markers and contains no environment literals
+- preflight runs before apply and never mutates platform resources
 - workflows contain only the intended target commands and credential scopes
 - workflows do not upload evidence artifacts
 - existing ABAC fail-closed contract tests still pass
 
 Live local verification proves:
 
-- `databricks bundle validate -t dev -p sandbox-infra` succeeds
-- `databricks bundle deploy -t dev -p sandbox-infra` succeeds without a
-  service-principal run-as grant
-- running the apply job creates or replaces the personal table and UDF
+- all three targets validate
+- dev deploys without service-principal impersonation
+- the apply job creates the personal table and UDF under developer ownership
+- null inputs and missing access rows return `false`
 
-Read-only validation also covers `uat` and `prod`. End-to-end remote verification
-is completed by a trusted pull request deployment to UAT and a post-merge
-deployment from `main` to production.
+Remote verification proves:
+
+- a trusted pull request deploys and runs UAT
+- a merge to `main` deploys and runs production
 
 ## References
 

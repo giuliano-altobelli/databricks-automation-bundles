@@ -23,25 +23,23 @@ EXPECTED_ACCESS_MAP_COLUMNS = {
 }
 SQL_ROOT = BUNDLE_ROOT / "sql"
 APPLY_SQL = SQL_ROOT / "apply.sql"
+PREFLIGHT_SQL = SQL_ROOT / "preflight.sql"
 JIRA_ROW_FILTER = SQL_ROOT / "jira_project_row_filter.sql"
 NATIVE_DAB_CONFIG = BUNDLE_ROOT / "databricks.yml"
 REPOCTL_BUNDLE_METADATA = BUNDLE_ROOT / "repoctl.bundle.yaml"
-EXPECTED_SQL_PARAMETERS = {
-    "access_map_catalog",
-    "access_map_schema",
-    "access_map_table",
-    "policy_catalog",
-    "policy_schema",
-    "policy_udf",
+EXPECTED_APPLY_SQL_PARAMETERS = {
+    "access_map_table_fqn",
+    "policy_udf_fqn",
 }
-ACCESS_MAP_IDENTIFIER_PATTERN = (
-    r"identifier\s*\(\s*:access_map_catalog\s*\|\|\s*'\.'\s*\|\|\s*"
-    r":access_map_schema\s*\|\|\s*'\.'\s*\|\|\s*:access_map_table\s*\)"
+EXPECTED_PREFLIGHT_SQL_PARAMETERS = {
+    "access_map_schema_fqn",
+    "policy_schema_fqn",
+}
+EXPECTED_FQN_VARIABLES = (
+    EXPECTED_APPLY_SQL_PARAMETERS | EXPECTED_PREFLIGHT_SQL_PARAMETERS
 )
-POLICY_IDENTIFIER_PATTERN = (
-    r"identifier\s*\(\s*:policy_catalog\s*\|\|\s*'\.'\s*\|\|\s*"
-    r":policy_schema\s*\|\|\s*'\.'\s*\|\|\s*:policy_udf\s*\)"
-)
+ACCESS_MAP_IDENTIFIER_PATTERN = r"identifier\s*\(\s*:access_map_table_fqn\s*\)"
+POLICY_IDENTIFIER_PATTERN = r"identifier\s*\(\s*:policy_udf_fqn\s*\)"
 
 
 def test_repo_validation_accepts_abac_dogfood_bundle_metadata() -> None:
@@ -76,7 +74,7 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     assert set(config) == {"bundle", "variables", "resources", "targets"}
     assert config["bundle"]["name"] == "abac-jira-project-access"
     assert config["bundle"]["databricks_cli_version"] == ">= 1.7.0"
-    assert set(config["variables"]) == EXPECTED_SQL_PARAMETERS | {
+    assert set(config["variables"]) == EXPECTED_FQN_VARIABLES | {
         "sql_warehouse_id",
         "run_as_service_principal_name",
     }
@@ -92,28 +90,30 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
 
     expected_target_values = {
         "dev": {
-            "access_map_catalog": "personal",
-            "access_map_schema": "${workspace.current_user.short_name}",
-            "access_map_table": "jira_project_access",
-            "policy_catalog": "personal",
-            "policy_schema": "${workspace.current_user.short_name}",
-            "policy_udf": "can_read_jira_project",
+            "access_map_schema_fqn": "personal.${workspace.current_user.short_name}",
+            "access_map_table_fqn": (
+                "personal.${workspace.current_user.short_name}.jira_project_access"
+            ),
+            "policy_schema_fqn": "personal.${workspace.current_user.short_name}",
+            "policy_udf_fqn": (
+                "personal.${workspace.current_user.short_name}.can_read_jira_project"
+            ),
         },
         "uat": {
-            "access_map_catalog": "dev_security",
-            "access_map_schema": "access_maps",
-            "access_map_table": "jira_project_access",
-            "policy_catalog": "dev_security",
-            "policy_schema": "policies",
-            "policy_udf": "can_read_jira_project",
+            "access_map_schema_fqn": "dev_security.access_maps",
+            "access_map_table_fqn": (
+                "dev_security.access_maps.jira_project_access"
+            ),
+            "policy_schema_fqn": "dev_security.policies",
+            "policy_udf_fqn": "dev_security.policies.can_read_jira_project",
         },
         "prod": {
-            "access_map_catalog": "prod_security",
-            "access_map_schema": "access_maps",
-            "access_map_table": "jira_project_access",
-            "policy_catalog": "prod_security",
-            "policy_schema": "policies",
-            "policy_udf": "can_read_jira_project",
+            "access_map_schema_fqn": "prod_security.access_maps",
+            "access_map_table_fqn": (
+                "prod_security.access_maps.jira_project_access"
+            ),
+            "policy_schema_fqn": "prod_security.policies",
+            "policy_udf_fqn": "prod_security.policies.can_read_jira_project",
         },
     }
     for target_name, expected_values in expected_target_values.items():
@@ -140,17 +140,38 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     job = config["resources"]["jobs"]["apply_abac_jira_project_access"]
     assert job["name"] == "apply_abac_jira_project_access"
     assert job["max_concurrent_runs"] == 1
-    assert len(job["tasks"]) == 1
-    task = job["tasks"][0]
-    assert task["task_key"] == "apply_abac_jira_project_access"
-    assert task["sql_task"]["file"] == {
+    assert len(job["tasks"]) == 2
+    tasks = {task["task_key"]: task for task in job["tasks"]}
+    assert set(tasks) == {
+        "preflight_target_schemas",
+        "apply_abac_jira_project_access",
+    }
+
+    preflight_task = tasks["preflight_target_schemas"]
+    assert "depends_on" not in preflight_task
+    assert preflight_task["sql_task"]["file"] == {
+        "path": "./sql/preflight.sql",
+        "source": "WORKSPACE",
+    }
+    assert preflight_task["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
+    assert preflight_task["sql_task"]["parameters"] == {
+        name: f"${{var.{name}}}" for name in EXPECTED_PREFLIGHT_SQL_PARAMETERS
+    }
+
+    apply_task = tasks["apply_abac_jira_project_access"]
+    assert apply_task["depends_on"] == [{"task_key": "preflight_target_schemas"}]
+    assert apply_task["sql_task"]["file"] == {
         "path": "./sql/apply.sql",
         "source": "WORKSPACE",
     }
-    assert task["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
-    assert task["sql_task"]["parameters"] == {
-        name: f"${{var.{name}}}" for name in EXPECTED_SQL_PARAMETERS
+    assert apply_task["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
+    assert apply_task["sql_task"]["parameters"] == {
+        name: f"${{var.{name}}}" for name in EXPECTED_APPLY_SQL_PARAMETERS
     }
+    assert all(
+        task["sql_task"]["file"]["path"] != "./sql/jira_project_row_filter.sql"
+        for task in tasks.values()
+    )
 
 
 def test_abac_dogfood_native_bundle_does_not_embed_authentication_credentials() -> None:
@@ -249,6 +270,13 @@ def test_abac_dogfood_spec_defines_live_target_and_safety_boundaries() -> None:
         "`dev` is an attended, local-only target",
         "`uat` is the shared pull-request target",
         "CI must not deploy this target",
+        "complete fully qualified names",
+        "read-only schema preflight",
+        "warehouse is verified implicitly when the preflight task starts",
+        "serverless SQL warehouse",
+        "Databricks Runtime 18.0 or later",
+        "production-specific Terraform predicate contract",
+        "never executes `sql/jira_project_row_filter.sql`",
         "project_key",
         "one row per effective principal, project key, access level, and source decision",
         "fails closed to zero protected rows",
@@ -291,13 +319,17 @@ def test_abac_dogfood_spec_defines_udf_signature_and_policy_predicate() -> None:
     assert "access_level in (`read`, `admin_view`)" in normalized_spec
     assert "current time within the effective range" in normalized_spec
     assert "otherwise returns false" in normalized_spec
-    assert "`can_read_jira_project(current_user(), project_key)`" in spec
+    assert (
+        "`prod_security.policies.can_read_jira_project(current_user(), project_key)`"
+        in spec
+    )
 
 
 def test_abac_dogfood_sql_source_files_exist() -> None:
     assert {path.name for path in SQL_ROOT.glob("*.sql")} == {
         "apply.sql",
         "jira_project_row_filter.sql",
+        "preflight.sql",
     }
 
 
@@ -352,24 +384,70 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
 def test_abac_dogfood_policy_fragment_calls_udf_and_preserves_terraform_boundary() -> None:
     policy = load_sql(JIRA_ROW_FILTER)
 
-    assert re.search(
-        POLICY_IDENTIFIER_PATTERN
-        + r"\s*\(\s*current_user\(\)\s*,\s*project_key\s*\)",
-        policy,
-        flags=re.IGNORECASE,
+    assert (
+        "prod_security.policies.can_read_jira_project(current_user(), project_key)"
+        in normalized_sql(policy)
     )
+    assert "production-only" in policy.lower()
+    assert "never executes this file" in policy.lower()
+    assert "identifier" not in policy.lower()
+    assert ":" not in strip_sql_line_comments(policy)
     assert "Terraform" in policy
     assert "live attachment/rollout controls" in policy
 
 
 def test_abac_dogfood_sql_destinations_are_entirely_target_driven() -> None:
     apply_sql = strip_sql_line_comments(load_sql(APPLY_SQL))
-    row_filter = strip_sql_line_comments(load_sql(JIRA_ROW_FILTER))
+    preflight_sql = strip_sql_line_comments(load_sql(PREFLIGHT_SQL))
 
-    assert set(re.findall(r":([a-z_]+)", apply_sql)) == EXPECTED_SQL_PARAMETERS
+    assert set(re.findall(r":([a-z_]+)", apply_sql)) == (
+        EXPECTED_APPLY_SQL_PARAMETERS
+    )
+    assert set(re.findall(r":([a-z_]+)", preflight_sql)) == (
+        EXPECTED_PREFLIGHT_SQL_PARAMETERS
+    )
     for target_catalog in ("personal", "dev_security", "prod_security"):
         assert target_catalog not in apply_sql.lower()
-        assert target_catalog not in row_filter.lower()
+        assert target_catalog not in preflight_sql.lower()
+
+
+def test_abac_dogfood_deployable_sql_uses_only_single_marker_identifiers() -> None:
+    deployable_sql = load_sql(APPLY_SQL) + "\n" + load_sql(PREFLIGHT_SQL)
+    identifier_arguments = re.findall(
+        r"identifier\s*\((?P<argument>[^)]*)\)",
+        deployable_sql,
+        flags=re.IGNORECASE,
+    )
+
+    assert identifier_arguments
+    assert {argument.strip() for argument in identifier_arguments} == {
+        ":access_map_schema_fqn",
+        ":access_map_table_fqn",
+        ":policy_schema_fqn",
+        ":policy_udf_fqn",
+    }
+    assert "||" not in deployable_sql
+    assert "'.'" not in deployable_sql
+
+
+def test_abac_dogfood_preflight_is_read_only_and_checks_both_schemas() -> None:
+    preflight_sql = load_sql(PREFLIGHT_SQL)
+    executable = normalized_sql(strip_sql_line_comments(preflight_sql))
+
+    assert len(re.findall(r"\bdescribe schema identifier\b", executable)) == 2
+    assert sum(line.rstrip().endswith(";") for line in preflight_sql.splitlines()) == 2
+    for mutating_keyword in (
+        "alter",
+        "create",
+        "delete",
+        "drop",
+        "insert",
+        "merge",
+        "replace",
+        "truncate",
+        "update",
+    ):
+        assert not re.search(rf"\b{mutating_keyword}\b", executable)
 
 
 def test_abac_dogfood_apply_sql_has_one_copy_of_each_deployable_statement() -> None:

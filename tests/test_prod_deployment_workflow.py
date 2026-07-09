@@ -45,12 +45,30 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     assert [step.get("uses") for step in verify["steps"] if "uses" in step] == [
         "actions/checkout@v4",
         "astral-sh/setup-uv@v5",
-        "extractions/setup-just@v4.0.0",
     ]
-    assert [step.get("run") for step in verify["steps"] if "run" in step] == [
+    checkout_step = next(
+        step for step in verify["steps"] if step.get("uses") == "actions/checkout@v4"
+    )
+    assert checkout_step["with"]["fetch-depth"] == 0
+
+    run_steps = [step for step in verify["steps"] if "run" in step]
+    assert [step["run"] for step in run_steps[:-1]] == [
         "uv sync --locked --all-extras --dev",
-        "just verify",
+        "uv run pytest -q",
+        "uv run ruff check tools tests",
+        "uv run prek -c prek.toml run --all-files",
+        "uv run repoctl discover",
+        "uv run repoctl validate",
     ]
+
+    changed_step = run_steps[-1]
+    assert changed_step["env"] == {
+        "CHANGED_BASE": "${{ github.event.before }}",
+        "CHANGED_FALLBACK": "${{ github.sha }}",
+    }
+    assert '[[ -z "$CHANGED_BASE" || "$CHANGED_BASE" =~ ^0+$ ]]' in changed_step["run"]
+    assert 'CHANGED_BASE="$CHANGED_FALLBACK"' in changed_step["run"]
+    assert 'uv run repoctl changed --base "$CHANGED_BASE"' in changed_step["run"]
 
 
 def test_prod_deploy_job_uses_oauth_m2m_and_expected_commands() -> None:
@@ -91,5 +109,7 @@ def test_prod_workflow_has_no_dev_uat_pat_or_evidence_uploads() -> None:
         "DATABRICKS_TOKEN",
         "repoctl evidence",
         "actions/upload-artifact",
+        "setup-just",
+        "just verify",
     ):
         assert forbidden not in text

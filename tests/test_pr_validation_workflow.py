@@ -97,9 +97,18 @@ def test_pr_validation_workflow_has_full_local_verify_parity() -> None:
 
 
 def test_pr_validation_workflow_writes_changed_bundle_summary() -> None:
+    validate = workflow()["jobs"]["validate"]
     shell = workflow_run_text()
+    changed_step = next(
+        step for step in validate["steps"] if step.get("id") == "changed_bundles"
+    )
 
+    assert validate["outputs"] == {
+        "changed_bundles": "${{ steps.changed_bundles.outputs.changed_bundles }}"
+    }
     assert "uv run repoctl changed --base \"$CHANGED_BASE\"" in shell
+    assert "jq -c '.changed_bundles' changed-bundles.json" in changed_step["run"]
+    assert "$GITHUB_OUTPUT" in changed_step["run"]
     assert "$GITHUB_STEP_SUMMARY" in shell
     assert "Changed bundles" in shell
     assert "changed-bundles.json" in shell
@@ -130,7 +139,9 @@ def test_pr_deploy_job_is_gated_to_trusted_same_repository_pull_requests() -> No
     assert condition == (
         "github.event_name == 'pull_request' && "
         "github.event.pull_request.head.repo.full_name == github.repository && "
-        "github.event.pull_request.user.login != 'dependabot[bot]'"
+        "github.event.pull_request.user.login != 'dependabot[bot]' && "
+        "contains( fromJSON(needs.validate.outputs.changed_bundles), "
+        f"'{BUNDLE_ROOT}' )"
     )
     assert deploy["concurrency"] == {
         "group": "abac-jira-project-access-uat",

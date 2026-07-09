@@ -11,6 +11,8 @@ jobs:
   validate:
     name: Local verify parity
     runs-on: ubuntu-latest
+    outputs:
+      changed_bundles: ${{ steps.changed_bundles.outputs.changed_bundles }}
 
     steps:
       - name: Checkout repository
@@ -40,11 +42,13 @@ jobs:
         run: uv run repoctl validate
 
       - name: Compute changed bundles
+        id: changed_bundles
         env:
           CHANGED_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           set -euo pipefail
           uv run repoctl changed --base "$CHANGED_BASE" > changed-bundles.json
+          echo "changed_bundles=$(jq -c '.changed_bundles' changed-bundles.json)" >> "$GITHUB_OUTPUT"
           {
             echo "## Changed bundles"
             echo
@@ -61,7 +65,11 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(
+        fromJSON(needs.validate.outputs.changed_bundles),
+        'projects/platform-governance/bundles/abac-jira-project-access'
+      )
     runs-on: ubuntu-latest
     environment: uat
     concurrency:

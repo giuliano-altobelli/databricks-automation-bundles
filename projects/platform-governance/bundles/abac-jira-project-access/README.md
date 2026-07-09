@@ -7,8 +7,9 @@ shared UAT in that sandbox, and production in the prod workspace.
 
 ## Live Resources
 
-The `apply_abac_jira_project_access` job runs `sql/apply.sql` on an existing SQL
-warehouse and creates or updates only:
+The `apply_abac_jira_project_access` job runs a read-only schema preflight and
+then `sql/apply.sql` on an existing SQL warehouse. The apply task creates or
+updates only:
 
 - `dev`: `personal.<current-user-short-name>.jira_project_access` and
   `personal.<current-user-short-name>.can_read_jira_project`
@@ -18,8 +19,30 @@ warehouse and creates or updates only:
   `prod_security.policies.can_read_jira_project`
 
 The bundle does not create catalogs or schemas, attach row filters, write Unity
-Catalog audit records, or manage Terraform-owned platform controls. The
-`sql/jira_project_row_filter.sql` file remains an unattached reference fragment.
+Catalog audit records, or manage Terraform-owned platform controls.
+
+## SQL Execution Contract
+
+The targets pass complete fully qualified names into SQL task parameters. The
+apply task receives `access_map_table_fqn` and `policy_udf_fqn`; every dynamic
+object reference is a single marker such as
+`IDENTIFIER(:access_map_table_fqn)`. Deployable SQL never constructs an object
+name with string concatenation.
+
+Before apply, `sql/preflight.sql` uses `DESCRIBE SCHEMA` to check
+`access_map_schema_fqn` and `policy_schema_fqn`. This task is read-only and must
+succeed before any DDL runs. The warehouse is verified implicitly when the
+preflight task starts, so the SQL does not attempt a separate warehouse check.
+
+The SQL file task is intended for a serverless SQL warehouse and follows
+Databricks SQL / Databricks Runtime 18.0 or later parameter-marker semantics.
+Passing each FQN as one marker also avoids the identifier-expression
+concatenation deprecated in DBR 18.
+
+`sql/jira_project_row_filter.sql` is a production-specific Terraform predicate
+contract for `prod_security.policies.can_read_jira_project`. The Databricks job
+never executes it; Terraform remains responsible for live attachment and
+rollout.
 
 ## Local Dev Workflow
 

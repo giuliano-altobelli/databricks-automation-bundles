@@ -33,18 +33,36 @@ target uses the current developer's workspace root.
 
 ## SQL Parameter Contract
 
-`sql/apply.sql` is target-agnostic. The bundle supplies these named SQL
-parameters to `IDENTIFIER(:param)` expressions:
+`sql/apply.sql` is target-agnostic. Each target supplies complete fully
+qualified names rather than separate catalog, schema, and object components.
+The apply task receives:
 
-- `access_map_catalog`
-- `access_map_schema`
-- `access_map_table`
-- `policy_catalog`
-- `policy_schema`
-- `policy_udf`
+- `access_map_table_fqn`
+- `policy_udf_fqn`
 
-The SQL source must not hard-code `personal`, `dev_security`, or
+Every deployable object reference uses `IDENTIFIER(:single_marker)`. Deployable
+SQL must never concatenate identifier components with `|| '.' ||`.
+
+The read-only schema preflight receives:
+
+- `access_map_schema_fqn`
+- `policy_schema_fqn`
+
+The deployable SQL sources must not hard-code `personal`, `dev_security`, or
 `prod_security`.
+
+## Preflight and Compute Contract
+
+`preflight_target_schemas` runs `sql/preflight.sql` before the apply task. It
+uses `DESCRIBE SCHEMA IDENTIFIER(:single_marker)` for both target schemas and
+performs no writes. A missing or inaccessible schema fails the job before DDL.
+The warehouse is verified implicitly when the preflight task starts; no SQL
+statement can separately prove that its own warehouse exists.
+
+The SQL file tasks use a serverless SQL warehouse and rely on Databricks SQL /
+Databricks Runtime 18.0 or later semantics for DDL parameter markers and the
+`IDENTIFIER` clause. Complete-FQN markers avoid the constant string-expression
+form deprecated in DBR 18.
 
 ## Access Map Contract
 
@@ -94,17 +112,19 @@ rows, or null required inputs, the UDF otherwise returns false.
 
 ## Policy SQL Decision
 
-The target-driven row-filter predicate fragment calls
-`can_read_jira_project(current_user(), project_key)` after resolving its UDF
-identifier from bundle parameters. Terraform remains owner of stable platform
-policy definitions and live attachment/rollout controls. This bundle does not
-execute or attach the fragment.
+`sql/jira_project_row_filter.sql` is the production-specific Terraform
+predicate contract. It calls
+`prod_security.policies.can_read_jira_project(current_user(), project_key)`.
+Terraform remains owner of stable platform policy definitions and live
+attachment/rollout controls. The Databricks job never executes
+`sql/jira_project_row_filter.sql` and does not attach the fragment.
 
 ## Deployment Boundary
 
-The live bundle creates or updates only the target access-map table, the
-policy-supporting UDF, and the `apply_abac_jira_project_access` Databricks job.
-It uses an existing SQL warehouse, catalog, and schemas.
+The live bundle verifies its two target schemas, then creates or updates only
+the target access-map table, the policy-supporting UDF, and the
+`apply_abac_jira_project_access` Databricks job. It uses an existing SQL
+warehouse, catalog, and schemas.
 
 Production deploys only from the `main` workflow. Pull-request deployment uses
 the `uat` target in the sandbox workspace. The `dev` target remains local-only.

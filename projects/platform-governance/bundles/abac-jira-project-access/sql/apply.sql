@@ -1,9 +1,7 @@
 -- Jira project access map for ABAC policy enforcement.
 -- This table is an enforcement index for current effective access,
 -- not an approval ledger or wide audit table.
-CREATE TABLE IF NOT EXISTS IDENTIFIER(
-  :access_map_catalog || '.' || :access_map_schema || '.' || :access_map_table
-) (
+CREATE TABLE IF NOT EXISTS IDENTIFIER(:access_map_table_fqn) (
   effective_principal STRING NOT NULL,
   principal_type STRING NOT NULL,
   project_key STRING NOT NULL,
@@ -20,9 +18,7 @@ COMMENT 'Enforcement index for current Jira project access; not an approval ledg
 -- The predicate aliases UDF inputs before joining to the access map so
 -- column checks remain unambiguous. Null inputs and missing, inactive,
 -- unsupported, not-yet-valid, or expired grants all fail closed.
-CREATE OR REPLACE FUNCTION IDENTIFIER(
-  :policy_catalog || '.' || :policy_schema || '.' || :policy_udf
-) (
+CREATE OR REPLACE FUNCTION IDENTIFIER(:policy_udf_fqn) (
   principal STRING,
   project_key STRING
 )
@@ -37,9 +33,7 @@ RETURN
           project_key AS requested_project_key
       )
       SELECT 1
-      FROM IDENTIFIER(
-        :access_map_catalog || '.' || :access_map_schema || '.' || :access_map_table
-      ) AS access_map
+      FROM IDENTIFIER(:access_map_table_fqn) AS access_map
       CROSS JOIN args
       WHERE access_map.effective_principal = args.requested_principal
         AND access_map.project_key = args.requested_project_key
