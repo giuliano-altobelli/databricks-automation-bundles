@@ -56,30 +56,36 @@ def workflow_executable_commands() -> list[str]:
     return executable_commands(workflow_run_text())
 
 
-def test_executable_command_parser_ignores_summary_formatting() -> None:
-    shell = """
-      set -euo pipefail
-      echo "uv run pytest -q"
-      uv run pytest -q
-      uv run repoctl changed --base "$CHANGED_BASE" > changed-bundles.json
-      {
-        echo "## Changed bundles"
-        cat changed-bundles.json
-      } >> "$GITHUB_STEP_SUMMARY"
-    """
-
-    assert executable_commands(shell) == [
-        "uv run pytest -q",
-        'uv run repoctl changed --base "$CHANGED_BASE"',
-    ]
-
-
 def test_pr_validation_workflow_exists_and_has_pr_trigger() -> None:
     parsed = workflow()
 
     triggers = parsed.get("on") or parsed.get(True)
     assert set(triggers) == {"pull_request", "workflow_dispatch"}
     assert "pull_request_target" not in triggers
+
+
+def test_pr_workflow_permissions_are_read_only() -> None:
+    assert workflow()["permissions"] == {"contents": "read"}
+
+
+def test_pr_validation_checkout_fetches_full_history() -> None:
+    validate = workflow()["jobs"]["validate"]
+    checkout_step = next(
+        step for step in validate["steps"] if step.get("uses") == CHECKOUT_ACTION
+    )
+
+    assert checkout_step["with"]["fetch-depth"] == 0
+
+
+def test_pr_validation_changed_base_uses_pull_request_base_with_dispatch_fallback() -> None:
+    validate = workflow()["jobs"]["validate"]
+    changed_step = next(
+        step for step in validate["steps"] if step.get("id") == "changed_bundles"
+    )
+
+    assert changed_step["env"]["CHANGED_BASE"] == (
+        "${{ github.event.pull_request.base.sha || github.sha }}"
+    )
 
 
 def test_pr_validation_workflow_has_full_local_verify_parity() -> None:

@@ -30,6 +30,17 @@ def test_prod_workflow_triggers_only_on_push_to_main() -> None:
     assert triggers["push"] == {"branches": ["main"]}
 
 
+def test_prod_workflow_permissions_are_read_only() -> None:
+    assert workflow()["permissions"] == {"contents": "read"}
+
+
+def test_prod_deploy_job_cannot_bypass_verification_failure() -> None:
+    deploy = workflow()["jobs"]["deploy-prod"]
+
+    assert deploy["needs"] == "verify"
+    assert "if" not in deploy
+
+
 def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     parsed = workflow()
     verify = parsed["jobs"]["verify"]
