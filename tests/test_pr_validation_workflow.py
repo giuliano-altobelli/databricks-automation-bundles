@@ -71,7 +71,7 @@ def test_pr_workflow_permissions_are_read_only() -> None:
 def test_pr_validation_checkout_fetches_full_history() -> None:
     validate = workflow()["jobs"]["validate"]
     checkout_step = next(
-        step for step in validate["steps"] if step.get("uses") == "actions/checkout@v4"
+        step for step in validate["steps"] if step.get("uses") == CHECKOUT_ACTION
     )
 
     assert checkout_step["with"]["fetch-depth"] == 0
