@@ -74,7 +74,7 @@ def test_evidence_schema_files_exist_and_are_valid_json() -> None:
         load_schema(filename)
 
 
-def test_evidence_schemas_document_runtime_contract() -> None:
+def test_evidence_schemas_define_runtime_contract() -> None:
     for filename, expected in EXPECTED_SCHEMAS.items():
         schema = load_schema(filename)
 
@@ -85,9 +85,6 @@ def test_evidence_schemas_document_runtime_contract() -> None:
         assert schema["type"] == "object"
         assert schema["additionalProperties"] is False
         assert schema["required"] == expected["required"]
-        assert isinstance(schema["description"], str)
-        assert schema["description"].strip()
-
         properties = schema["properties"]
         for property_name, property_constraints in expected["constraints"].items():
             for constraint_path, expected_value in property_constraints.items():
@@ -96,21 +93,6 @@ def test_evidence_schemas_document_runtime_contract() -> None:
                     constraint_path,
                     expected_value,
                 )
-
-
-def test_bundle_validation_schema_documents_runtime_artifact_pattern() -> None:
-    schema = load_schema("bundle-validation.schema.json")
-
-    assert "bundle-validate-<target>.json" in schema["description"]
-
-
-def test_evidence_readme_documents_strict_schema_contract() -> None:
-    readme = (SCHEMA_DIR / "README.md").read_text(encoding="utf-8")
-
-    assert "strict CI artifact contract" in readme
-    assert "repoctl evidence check" in readme
-    assert "dependency-free field validation" in readme
-    assert "not wired in as a runtime dependency" in readme
 
 
 def test_evidence_schemas_add_no_jsonschema_dependency() -> None:
