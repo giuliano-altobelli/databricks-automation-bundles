@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Databricks Bundle Tests"
+  short_description: "Write focused tests for this repository"
+  default_prompt: "Use $write-databricks-bundle-tests to add focused tests for this repository change."

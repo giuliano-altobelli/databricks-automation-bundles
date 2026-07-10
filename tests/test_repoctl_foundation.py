@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from repoctl.changes import classify_changed_files
 from repoctl.discovery import discover
 from repoctl.metadata import load_metadata
@@ -233,6 +234,32 @@ def test_classify_changed_files_keeps_docs_only_changes_non_deploying(tmp_path: 
     result = classify_changed_files(tmp_path, ["docs/design-docs/foundation.md"])
 
     assert result.docs_only is True
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == []
+
+
+@pytest.mark.parametrize("filename", ["README.md", "ARCHITECTURE.md"])
+def test_classify_changed_files_treats_exact_root_documentation_files_as_docs_only(
+    tmp_path: Path, filename: str
+) -> None:
+    write_foundation_fixture(tmp_path)
+
+    result = classify_changed_files(tmp_path, [filename])
+
+    assert result.docs_only is True
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == []
+
+
+@pytest.mark.parametrize("filename", ["README.md.bak", "ARCHITECTURE.md.old"])
+def test_classify_changed_files_does_not_treat_root_documentation_name_prefixes_as_docs_only(
+    tmp_path: Path, filename: str
+) -> None:
+    write_foundation_fixture(tmp_path)
+
+    result = classify_changed_files(tmp_path, [filename])
+
+    assert result.docs_only is False
     assert result.affects_all_bundles is False
     assert result.changed_bundles == []
 

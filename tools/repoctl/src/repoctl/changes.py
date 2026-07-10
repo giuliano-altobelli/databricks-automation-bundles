@@ -14,7 +14,8 @@ class ChangedResult:
     affects_all_bundles: bool
 
 
-DOC_PATHS = ("docs/", "README.md", "ARCHITECTURE.md")
+DOC_PREFIX = "docs/"
+DOC_FILES = {"README.md", "ARCHITECTURE.md"}
 ALL_BUNDLE_PREFIXES = ("libs/", "schemas/", "templates/", "tools/", ".github/")
 ALL_BUNDLE_FILES = {"pyproject.toml", "uv.lock", "prek.toml", "justfile"}
 
@@ -71,7 +72,7 @@ def classify_changed_files(root: Path, changed_files: list[str]) -> ChangedResul
 
 
 def _is_docs_only(path: str) -> bool:
-    return path.startswith(DOC_PATHS) or path in DOC_PATHS
+    return path.startswith(DOC_PREFIX) or path in DOC_FILES
 
 
 def _affects_all_bundles(path: str) -> bool:
