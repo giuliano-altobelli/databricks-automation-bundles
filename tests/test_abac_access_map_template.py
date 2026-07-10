@@ -27,15 +27,11 @@ PLACEHOLDERS = {
 PLACEHOLDER_PATTERN = re.compile(r"__[A-Z0-9_]+__")
 EXPECTED_ACCESS_MAP_COLUMNS = {
     "effective_principal": ("STRING", "NOT NULL"),
-    "principal_type": ("STRING", "NOT NULL"),
     MATERIALIZED_ACCESS_KEY: ("STRING", "NOT NULL"),
     "access_level": ("STRING", "NOT NULL"),
     "is_active": ("BOOLEAN", "NOT NULL"),
     "valid_from": ("TIMESTAMP", "NOT NULL"),
     "expires_at": ("TIMESTAMP", "NULL"),
-    "source_decision_id": ("STRING", "NOT NULL"),
-    "source_system": ("STRING", "NOT NULL"),
-    "updated_at": ("TIMESTAMP", "NOT NULL"),
 }
 
 
@@ -197,6 +193,12 @@ def test_abac_access_map_template_materializes_to_valid_testable_bundle(
     assert MATERIALIZED_ACCESS_KEY in udf
     assert MATERIALIZED_ACCESS_KEY in row_filter
     assert extract_access_map_ddl_columns(ddl) == EXPECTED_ACCESS_MAP_COLUMNS
+    executable_ddl = normalized_sql(strip_sql_line_comments(ddl))
+    assert re.search(
+        r"using\s+delta\s+comment\s+'.*?'\s+tblproperties\s*\(\s*"
+        r"'delta\.columnmapping\.mode'\s*=\s*'name'\s*\)",
+        executable_ddl,
+    )
 
     executable_udf = normalized_sql(strip_sql_line_comments(udf))
     assert re.search(
@@ -248,6 +250,7 @@ def test_abac_access_map_template_materializes_to_valid_testable_bundle(
     )
     assert isinstance(access_map_rows, list)
     assert isinstance(contract_cases, list)
+    assert all(set(row) == set(EXPECTED_ACCESS_MAP_COLUMNS) for row in access_map_rows)
 
     case_names = {case["name"] for case in contract_cases}
     assert "allows_read_access_level" in case_names
