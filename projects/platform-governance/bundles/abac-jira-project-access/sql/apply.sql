@@ -3,17 +3,15 @@
 -- not an approval ledger or wide audit table.
 CREATE TABLE IF NOT EXISTS IDENTIFIER(:access_map_table_fqn) (
   effective_principal STRING NOT NULL,
-  principal_type STRING NOT NULL,
   project_key STRING NOT NULL,
   access_level STRING NOT NULL,
   is_active BOOLEAN NOT NULL,
   valid_from TIMESTAMP NOT NULL,
-  expires_at TIMESTAMP,
-  source_decision_id STRING NOT NULL,
-  source_system STRING NOT NULL,
-  updated_at TIMESTAMP NOT NULL
+  expires_at TIMESTAMP
 )
-COMMENT 'Enforcement index for current Jira project access; not an approval ledger.';
+USING DELTA
+COMMENT 'Enforcement index for current Jira project access; not an approval ledger.'
+TBLPROPERTIES ('delta.columnMapping.mode' = 'name');
 
 -- The predicate aliases UDF inputs before joining to the access map so
 -- column checks remain unambiguous. Null inputs and missing, inactive,
