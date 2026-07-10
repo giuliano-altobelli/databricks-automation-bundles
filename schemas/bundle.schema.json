@@ -47,12 +47,15 @@
         "dev": {
           "type": "object",
           "additionalProperties": true,
-          "required": ["mode", "default"],
+          "required": ["mode", "default", "local"],
           "properties": {
             "mode": {
               "const": "development"
             },
             "default": {
+              "const": true
+            },
+            "local": {
               "const": true
             }
           }
@@ -63,7 +66,7 @@
           "required": ["mode", "ci_only"],
           "properties": {
             "mode": {
-              "const": "validation"
+              "const": "production"
             },
             "ci_only": {
               "const": true

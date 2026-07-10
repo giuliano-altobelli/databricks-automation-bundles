@@ -1,18 +1,17 @@
-name: PR Validation
+name: Production Deployment
 
 on:
-  pull_request:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  verify:
     name: Local verify parity
     runs-on: ubuntu-latest
-    outputs:
-      changed_bundles: ${{ steps.changed_bundles.outputs.changed_bundles }}
 
     steps:
       - name: Checkout repository
@@ -42,38 +41,23 @@ jobs:
         run: uv run repoctl validate
 
       - name: Compute changed bundles
-        id: changed_bundles
         env:
-          CHANGED_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+          CHANGED_BASE: ${{ github.event.before }}
+          CHANGED_FALLBACK: ${{ github.sha }}
         run: |
           set -euo pipefail
-          uv run repoctl changed --base "$CHANGED_BASE" > changed-bundles.json
-          echo "changed_bundles=$(jq -c '.changed_bundles' changed-bundles.json)" >> "$GITHUB_OUTPUT"
-          {
-            echo "## Changed bundles"
-            echo
-            echo "Base: \`$CHANGED_BASE\`"
-            echo
-            echo "\`\`\`json"
-            cat changed-bundles.json
-            echo "\`\`\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "$CHANGED_BASE" || "$CHANGED_BASE" =~ ^0+$ ]]; then
+            CHANGED_BASE="$CHANGED_FALLBACK"
+          fi
+          uv run repoctl changed --base "$CHANGED_BASE"
 
-  deploy-uat:
-    name: Deploy ABAC Jira project access to UAT
-    needs: validate
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      contains(
-        fromJSON(needs.validate.outputs.changed_bundles),
-        'projects/platform-governance/bundles/abac-jira-project-access'
-      )
+  deploy-prod:
+    name: Deploy ABAC Jira project access to prod
+    needs: verify
     runs-on: ubuntu-latest
-    environment: uat
+    environment: prod
     concurrency:
-      group: abac-jira-project-access-uat
+      group: abac-jira-project-access-prod
       cancel-in-progress: false
 
     steps:
@@ -83,7 +67,7 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@v1.7.0
 
-      - name: Validate, deploy, and apply UAT bundle
+      - name: Validate, deploy, and apply production bundle
         working-directory: projects/platform-governance/bundles/abac-jira-project-access
         env:
           DATABRICKS_AUTH_TYPE: oauth-m2m
@@ -94,6 +78,6 @@ jobs:
           BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
         run: |
           set -euo pipefail
-          databricks bundle validate -t uat
-          databricks bundle deploy -t uat
-          databricks bundle run -t uat apply_abac_jira_project_access
+          databricks bundle validate -t prod
+          databricks bundle deploy -t prod
+          databricks bundle run -t prod apply_abac_jira_project_access

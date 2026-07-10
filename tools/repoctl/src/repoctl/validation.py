@@ -14,7 +14,7 @@ class ValidationResult:
     errors: list[str]
 
 
-REQUIRED_TARGETS = {"dev", "prod", "uat"}
+REQUIRED_TARGETS = {"dev", "uat", "prod"}
 PROJECT_FIELDS = {"version", "name", "owner", "review"}
 BUNDLE_FIELDS = {"version", "name", "type", "owner", "review", "targets", "depends_on"}
 DEPENDENCY_FIELDS = {"bundles", "libs"}
@@ -127,26 +127,27 @@ def _validate_targets(display_path: str, targets: Any) -> list[str]:
     errors: list[str] = []
     declared_targets = set(targets)
     if declared_targets - REQUIRED_TARGETS:
-        errors.append(f"{display_path} targets may only declare: dev, prod, uat")
+        errors.append(f"{display_path} targets may only declare: dev, uat, prod")
     if not REQUIRED_TARGETS.issubset(declared_targets):
-        errors.append(f"{display_path} must declare targets: dev, prod, uat")
+        errors.append(f"{display_path} must declare targets: dev, uat, prod")
 
     dev = targets.get("dev")
     if (
         not isinstance(dev, dict)
         or dev.get("mode") != "development"
         or dev.get("default") is not True
+        or dev.get("local") is not True
     ):
-        errors.append(f"{display_path} dev target must be default development mode")
+        errors.append(f"{display_path} dev target must be local default development mode")
 
-    for target, mode in {"uat": "validation", "prod": "production"}.items():
+    for target in ("uat", "prod"):
         settings = targets.get(target)
         if (
             not isinstance(settings, dict)
-            or settings.get("mode") != mode
+            or settings.get("mode") != "production"
             or settings.get("ci_only") is not True
         ):
-            errors.append(f"{display_path} {target} target must be CI-only {mode} mode")
+            errors.append(f"{display_path} {target} target must be CI-only production mode")
 
     return errors
 

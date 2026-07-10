@@ -11,7 +11,7 @@ BUNDLE_ROOT = (
 FIXTURE_ROOT = BUNDLE_ROOT / "tests" / "fixtures"
 ACCESS_MAP_ROWS_FIXTURE = FIXTURE_ROOT / "access_map_rows.json"
 CONTRACT_CASES_FIXTURE = FIXTURE_ROOT / "contract_cases.json"
-CAN_READ_UDF = BUNDLE_ROOT / "sql" / "can_read_jira_project.sql"
+APPLY_SQL = BUNDLE_ROOT / "sql" / "apply.sql"
 FIXED_NOW = datetime.fromisoformat("2026-07-08T12:00:00+00:00")
 ALLOWED_ACCESS_LEVELS = {"read", "admin_view"}
 
@@ -62,9 +62,15 @@ def strip_sql_line_comments(sql: str) -> str:
     return re.sub(r"--.*", "", sql)
 
 
-def extract_executable_sql_literals(sql: str) -> list[str]:
+def extract_udf_access_levels(sql: str) -> list[str]:
     executable = strip_sql_line_comments(sql)
-    return re.findall(r"'([^']+)'", executable)
+    match = re.search(
+        r"access_map\.access_level\s+IN\s*\((?P<levels>[^)]+)\)",
+        executable,
+        flags=re.IGNORECASE,
+    )
+    assert match is not None
+    return re.findall(r"'([^']+)'", match.group("levels"))
 
 
 def test_abac_contract_fixture_cases_have_unique_names_and_expected_boolean() -> None:
@@ -88,7 +94,7 @@ def test_offline_can_read_jira_project_contract_cases() -> None:
 
 
 def test_can_read_jira_project_udf_access_levels_match_offline_contract() -> None:
-    literals = extract_executable_sql_literals(CAN_READ_UDF.read_text(encoding="utf-8"))
+    literals = extract_udf_access_levels(APPLY_SQL.read_text(encoding="utf-8"))
 
     assert set(literals) == ALLOWED_ACCESS_LEVELS
     assert len(literals) == len(ALLOWED_ACCESS_LEVELS)
