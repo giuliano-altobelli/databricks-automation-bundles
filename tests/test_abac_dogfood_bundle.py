@@ -11,15 +11,11 @@ BUNDLE_ROOT = (
 )
 EXPECTED_ACCESS_MAP_COLUMNS = {
     "effective_principal": ("STRING", "NOT NULL"),
-    "principal_type": ("STRING", "NOT NULL"),
     "project_key": ("STRING", "NOT NULL"),
     "access_level": ("STRING", "NOT NULL"),
     "is_active": ("BOOLEAN", "NOT NULL"),
     "valid_from": ("TIMESTAMP", "NOT NULL"),
     "expires_at": ("TIMESTAMP", "NULL"),
-    "source_decision_id": ("STRING", "NOT NULL"),
-    "source_system": ("STRING", "NOT NULL"),
-    "updated_at": ("TIMESTAMP", "NOT NULL"),
 }
 SQL_ROOT = BUNDLE_ROOT / "sql"
 APPLY_SQL = SQL_ROOT / "apply.sql"
@@ -239,9 +235,18 @@ def test_abac_dogfood_sql_source_files_exist() -> None:
 
 def test_abac_dogfood_access_map_ddl_matches_column_contract() -> None:
     ddl = load_sql(APPLY_SQL)
+    executable = normalized_sql(strip_sql_line_comments(ddl))
 
     assert re.search(ACCESS_MAP_IDENTIFIER_PATTERN, ddl, flags=re.IGNORECASE)
     assert extract_access_map_ddl_columns(ddl) == EXPECTED_ACCESS_MAP_COLUMNS
+    assert re.search(
+        r"create\s+table\s+if\s+not\s+exists\s+"
+        + ACCESS_MAP_IDENTIFIER_PATTERN
+        + r"\s*\([^;]*?\)\s+using\s+delta\s+comment\s+'.*?'\s+"
+        + r"tblproperties\s*\(\s*"
+        r"'delta\.columnmapping\.mode'\s*=\s*'name'\s*\)",
+        executable,
+    )
 
 
 def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
