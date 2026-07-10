@@ -187,23 +187,6 @@ def test_abac_dogfood_native_bundle_does_not_embed_authentication_credentials() 
         assert forbidden not in config_text
 
 
-def load_spec() -> str:
-    return (BUNDLE_ROOT / "SPEC.md").read_text(encoding="utf-8")
-
-
-def extract_column_contracts(spec: str) -> dict[str, tuple[str, str]]:
-    rows = re.findall(
-        r"^\|\s*`(?P<name>[a-z_]+)`\s*\|\s*`(?P<type>[A-Z]+)`\s*\|"
-        r"\s*`(?P<nullability>NOT NULL|NULL)`\s*\|",
-        spec,
-        flags=re.MULTILINE,
-    )
-    return {
-        name: (column_type, nullability)
-        for name, column_type, nullability in rows
-    }
-
-
 def load_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -246,85 +229,6 @@ def extract_access_map_ddl_columns(sql: str) -> dict[str, tuple[str, str]]:
     return columns
 
 
-def extract_allowed_access_levels(spec: str) -> set[str]:
-    match = re.search(
-        r"Allowed access levels are exactly:\s*(?P<levels>(?:`[a-z_]+`(?:,\s*)?)+)\.",
-        spec,
-    )
-    assert match is not None
-    return set(re.findall(r"`([a-z_]+)`", match.group("levels")))
-
-
-def test_abac_dogfood_spec_defines_live_target_and_safety_boundaries() -> None:
-    spec = load_spec()
-    normalized_spec = " ".join(spec.split())
-
-    required_phrases = [
-        "first live ABAC dogfood slice",
-        "personal.<current-user-short-name>.jira_project_access",
-        "personal.<current-user-short-name>.can_read_jira_project",
-        "dev_security.access_maps.jira_project_access",
-        "prod_security.access_maps.jira_project_access",
-        "dev_security.policies.can_read_jira_project",
-        "prod_security.policies.can_read_jira_project",
-        "`dev` is an attended, local-only target",
-        "`uat` is the shared pull-request target",
-        "CI must not deploy this target",
-        "complete fully qualified names",
-        "read-only schema preflight",
-        "warehouse is verified implicitly when the preflight task starts",
-        "serverless SQL warehouse",
-        "Databricks Runtime 18.0 or later",
-        "production-specific Terraform predicate contract",
-        "never executes `sql/jira_project_row_filter.sql`",
-        "project_key",
-        "one row per effective principal, project key, access level, and source decision",
-        "fails closed to zero protected rows",
-        "does not dynamically resolve group membership at query time",
-        "Terraform remains owner of stable platform policy definitions",
-        "live attachment/rollout controls",
-        "creates or updates only",
-        "existing SQL warehouse",
-        "Production deploys only from the `main` workflow",
-        "Pull-request deployment uses the `uat` target",
-        "workflows do not upload evidence artifacts",
-    ]
-
-    for phrase in required_phrases:
-        assert phrase in normalized_spec
-
-
-def test_abac_dogfood_spec_defines_sql_facing_access_map_columns() -> None:
-    spec = load_spec()
-
-    assert extract_column_contracts(spec) == EXPECTED_ACCESS_MAP_COLUMNS
-
-
-def test_abac_dogfood_spec_defines_exact_access_level_contract() -> None:
-    spec = load_spec()
-
-    assert extract_allowed_access_levels(spec) == {"read", "admin_view"}
-    assert "Unknown access levels fail closed." in spec
-
-
-def test_abac_dogfood_spec_defines_udf_signature_and_policy_predicate() -> None:
-    spec = load_spec()
-    normalized_spec = " ".join(spec.split())
-
-    assert (
-        "`can_read_jira_project(principal STRING, project_key STRING) RETURNS BOOLEAN`"
-    ) in spec
-    assert "target-resolved UDF signature" in spec
-    assert "current active access-map row for the principal/project" in normalized_spec
-    assert "access_level in (`read`, `admin_view`)" in normalized_spec
-    assert "current time within the effective range" in normalized_spec
-    assert "otherwise returns false" in normalized_spec
-    assert (
-        "`prod_security.policies.can_read_jira_project(current_user(), project_key)`"
-        in spec
-    )
-
-
 def test_abac_dogfood_sql_source_files_exist() -> None:
     assert {path.name for path in SQL_ROOT.glob("*.sql")} == {
         "apply.sql",
@@ -333,18 +237,15 @@ def test_abac_dogfood_sql_source_files_exist() -> None:
     }
 
 
-def test_abac_dogfood_access_map_ddl_matches_spec_column_contract() -> None:
+def test_abac_dogfood_access_map_ddl_matches_column_contract() -> None:
     ddl = load_sql(APPLY_SQL)
 
     assert re.search(ACCESS_MAP_IDENTIFIER_PATTERN, ddl, flags=re.IGNORECASE)
     assert extract_access_map_ddl_columns(ddl) == EXPECTED_ACCESS_MAP_COLUMNS
-    assert "enforcement index" in ddl.lower()
-    assert "not an approval ledger" in ddl.lower()
 
 
 def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
     udf = load_sql(APPLY_SQL)
-    normalized = normalized_sql(udf)
     executable = normalized_sql(strip_sql_line_comments(udf))
 
     assert re.search(POLICY_IDENTIFIER_PATTERN, udf, flags=re.IGNORECASE)
@@ -355,8 +256,8 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
         flags=re.IGNORECASE,
     )
     assert re.search(ACCESS_MAP_IDENTIFIER_PATTERN, executable)
-    assert "effective_principal = principal" not in normalized
-    assert "project_key = project_key" not in normalized
+    assert "effective_principal = principal" not in executable
+    assert "project_key = project_key" not in executable
     assert re.search(
         r"access_map\.effective_principal\s*=\s*args\.requested_principal",
         executable,
@@ -381,19 +282,15 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
     assert "false" in executable
 
 
-def test_abac_dogfood_policy_fragment_calls_udf_and_preserves_terraform_boundary() -> None:
-    policy = load_sql(JIRA_ROW_FILTER)
+def test_abac_dogfood_policy_fragment_calls_udf() -> None:
+    policy = normalized_sql(strip_sql_line_comments(load_sql(JIRA_ROW_FILTER)))
 
     assert (
         "prod_security.policies.can_read_jira_project(current_user(), project_key)"
-        in normalized_sql(policy)
+        in policy
     )
-    assert "production-only" in policy.lower()
-    assert "never executes this file" in policy.lower()
-    assert "identifier" not in policy.lower()
-    assert ":" not in strip_sql_line_comments(policy)
-    assert "Terraform" in policy
-    assert "live attachment/rollout controls" in policy
+    assert "identifier" not in policy
+    assert ":" not in policy
 
 
 def test_abac_dogfood_sql_destinations_are_entirely_target_driven() -> None:

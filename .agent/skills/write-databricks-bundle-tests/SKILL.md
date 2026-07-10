@@ -38,13 +38,12 @@ Do not assume another skill is installed. Apply these invariants directly: test 
 - Use direct `cli.main(...)` with `monkeypatch` and `capsys` only when injecting a boundary failure that a subprocess cannot reproduce safely, such as an operating-system read error.
 - Do not mock the CLI behavior being tested.
 
-### Test schemas, metadata, templates, and documentation
+### Test schemas, metadata, and templates
 
 - Parse JSON and YAML and assert semantic structure, required fields, rejected fields, lifecycle targets, and cross-file invariants.
 - Prefer focused structural assertions over whole-file snapshots or incidental formatting checks.
 - Materialize templates into `tmp_path`, replace placeholders, and exercise real discovery and validation when testing generated behavior.
 - Test mirrored template and dogfood contracts where a change must remain aligned across both.
-- Assert documentation text only when the wording represents an intentional repository contract or required operator guidance.
 
 ### Test workflows and command parity
 

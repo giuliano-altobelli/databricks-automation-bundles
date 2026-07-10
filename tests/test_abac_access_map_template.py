@@ -179,16 +179,6 @@ def test_abac_access_map_template_materializes_to_valid_testable_bundle(
     assert "include" not in native_databricks_config
     assert not (bundle_root / "bundle.yaml").exists()
 
-    spec = (bundle_root / "SPEC.md").read_text(encoding="utf-8")
-    readme = (bundle_root / "README.md").read_text(encoding="utf-8")
-    assert MATERIALIZED_ACCESS_MAP_TABLE in spec
-    assert MATERIALIZED_POLICY_UDF in spec
-    assert MATERIALIZED_ACCESS_KEY in spec
-    assert "fails closed" in spec
-    assert "Evidence Expectation" in spec
-    assert "valid SQL identifier" in readme
-    assert "fully qualified object names" in readme
-
     expected_sql_files = {
         "access_map_ddl.sql",
         "can_read_access.sql",
@@ -208,7 +198,6 @@ def test_abac_access_map_template_materializes_to_valid_testable_bundle(
     assert MATERIALIZED_ACCESS_KEY in row_filter
     assert extract_access_map_ddl_columns(ddl) == EXPECTED_ACCESS_MAP_COLUMNS
 
-    normalized_udf = normalized_sql(udf)
     executable_udf = normalized_sql(strip_sql_line_comments(udf))
     assert re.search(
         rf"\(\s*principal\s+STRING\s*,\s*{MATERIALIZED_ACCESS_KEY}\s+STRING\s*\)"
@@ -217,8 +206,11 @@ def test_abac_access_map_template_materializes_to_valid_testable_bundle(
         flags=re.IGNORECASE,
     )
     assert f"{MATERIALIZED_ACCESS_MAP_TABLE}" in executable_udf
-    assert "effective_principal = principal" not in normalized_udf
-    assert f"{MATERIALIZED_ACCESS_KEY} = {MATERIALIZED_ACCESS_KEY}" not in normalized_udf
+    assert "effective_principal = principal" not in executable_udf
+    assert (
+        f"{MATERIALIZED_ACCESS_KEY} = {MATERIALIZED_ACCESS_KEY}"
+        not in executable_udf
+    )
     assert re.search(
         r"access_map\.effective_principal\s*=\s*args\.requested_principal",
         executable_udf,
