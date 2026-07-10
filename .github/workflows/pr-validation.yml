@@ -10,7 +10,7 @@ permissions:
 jobs:
   validate:
     name: Local verify parity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       changed_bundles: ${{ steps.changed_bundles.outputs.changed_bundles }}
 
@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: Bootstrap tooling
         run: uv sync --locked --all-extras --dev
@@ -70,7 +70,7 @@ jobs:
         fromJSON(needs.validate.outputs.changed_bundles),
         'projects/platform-governance/bundles/abac-jira-project-access'
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment: uat
     concurrency:
       group: abac-jira-project-access-uat

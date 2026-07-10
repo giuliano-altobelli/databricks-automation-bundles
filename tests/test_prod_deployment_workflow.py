@@ -6,7 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "prod-deployment.yml"
 BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-project-access"
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
-SETUP_UV_ACTION = "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b"
+SETUP_UV_ACTION = "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e"
 
 
 def workflow() -> dict:
@@ -43,6 +43,9 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
         "group": "abac-jira-project-access-prod",
         "cancel-in-progress": False,
     }
+    assert {
+        job["runs-on"] for job in parsed["jobs"].values()
+    } == {"ubuntu-22.04"}
 
     assert [step.get("uses") for step in verify["steps"] if "uses" in step] == [
         CHECKOUT_ACTION,
