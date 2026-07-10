@@ -6,6 +6,8 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "pr-validation.yml"
 BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-project-access"
+CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+SETUP_UV_ACTION = "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78"
 
 
 def recipe_commands(justfile_text: str, recipe_name: str) -> list[str]:
@@ -94,6 +96,22 @@ def test_pr_validation_workflow_has_full_local_verify_parity() -> None:
             expected_commands.append(command)
 
     assert workflow_executable_commands() == expected_commands
+
+
+def test_pr_workflow_pins_runner_and_immutable_action_releases() -> None:
+    parsed = workflow()
+    validate_uses = [
+        step["uses"] for step in parsed["jobs"]["validate"]["steps"] if "uses" in step
+    ]
+    deploy_uses = [
+        step["uses"] for step in parsed["jobs"]["deploy-uat"]["steps"] if "uses" in step
+    ]
+
+    assert validate_uses[:2] == [CHECKOUT_ACTION, SETUP_UV_ACTION]
+    assert deploy_uses[0] == CHECKOUT_ACTION
+    assert {
+        job["runs-on"] for job in parsed["jobs"].values()
+    } == {"ubuntu-22.04"}
 
 
 def test_pr_validation_workflow_writes_changed_bundle_summary() -> None:
