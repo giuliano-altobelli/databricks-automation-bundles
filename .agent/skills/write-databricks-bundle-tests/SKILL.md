@@ -1,6 +1,12 @@
 ---
 name: write-databricks-bundle-tests
-description: Design, implement, review, and improve automated tests specifically for the databricks-automation-bundles repository. Use when changing repoctl Python code, metadata or evidence schemas, templates, Databricks bundle YAML or SQL, GitHub workflows, justfile commands, or ABAC contracts, and for pytest regressions, CI parity, offline contract validation, flaky tests, coverage gaps, or mocking decisions in this repository.
+description: >
+    Design, implement, review, and improve automated tests specifically for the databricks-automation-bundles repository.
+    Use when changing repoctl Python code, metadata or evidence schemas, templates, Databricks bundle YAML or SQL, GitHub workflows, justfile commands, or ABAC contracts, and for pytest regressions, CI parity, offline contract validation, flaky tests, coverage gaps, or mocking decisions in this repository.
+version: "1.0.0"
+user-invocable: true
+context: inline
+allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 ---
 
 # Write Databricks Bundle Tests
