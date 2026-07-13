@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Explore collection-oriented Databricks bundle structures and selective deployment.">
+    <title>Bundle collection explorer</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <header class="hero">
+      <div class="shell">
+        <p class="eyebrow">Platform governance</p>
+        <h1>Bundle collection explorer</h1>
+        <p class="lede">Model one project with many ABAC collections, see the generated repository, and trace only changed bundles into deployment.</p>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section aria-labelledby="model-heading">
+        <div class="heading">
+          <div>
+            <p class="step">01 · Define</p>
+            <h2 id="model-heading">Collections and access maps</h2>
+          </div>
+          <button class="button primary" id="add" type="button">Add collection</button>
+        </div>
+
+        <label class="field project" for="project">
+          <span>Project</span>
+          <input id="project" name="project" pattern="[a-z0-9][a-z0-9-]*[a-z0-9]" autocomplete="off">
+          <small>Use repository identifiers: lowercase letters, numbers, and hyphens.</small>
+        </label>
+
+        <div class="table">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Changed</th>
+                <th scope="col">Collection bundle</th>
+                <th scope="col">Access maps</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="collections"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="repository-heading">
+        <div class="heading">
+          <div>
+            <p class="step">02 · Inspect</p>
+            <h2 id="repository-heading">Generated repository</h2>
+          </div>
+          <div class="tabs" role="group" aria-label="Repository view">
+            <button class="button" id="treebutton" type="button" aria-pressed="true">Tree</button>
+            <button class="button" id="canvasbutton" type="button" aria-pressed="false">Canvas</button>
+          </div>
+        </div>
+
+        <div id="treeview">
+          <pre class="tree" aria-label="Generated repository directory tree"><code id="tree"></code></pre>
+        </div>
+
+        <div id="canvasview" hidden>
+          <div class="canvasbar">
+            <div class="controls" role="group" aria-label="Canvas zoom">
+              <button class="button" id="fit" type="button">Fit</button>
+              <button class="button" id="out" type="button" aria-label="Zoom out">−</button>
+              <button class="button" id="in" type="button" aria-label="Zoom in">+</button>
+            </div>
+            <label class="field compact" for="nodes">
+              <span>Selected path</span>
+              <select id="nodes">
+                <option value="">Select a repository path</option>
+              </select>
+            </label>
+          </div>
+          <canvas id="canvas" role="img"></canvas>
+          <output id="selection" class="selection" aria-live="polite">Select a node to inspect its complete path.</output>
+          <p class="legend"><span class="dot changed"></span> Changed collection <span class="dot folder"></span> Directory <span class="dot file"></span> File</p>
+        </div>
+      </section>
+
+      <section aria-labelledby="workflow-heading">
+        <div class="heading">
+          <div>
+            <p class="step">03 · Trace</p>
+            <h2 id="workflow-heading">Validation and selective deployment</h2>
+          </div>
+          <output id="status" class="status" aria-live="polite"></output>
+        </div>
+
+        <ol class="workflow">
+          <li class="stage">
+            <p class="number">1</p>
+            <h3>Validate locally</h3>
+            <ul class="tools">
+              <li><code>pytest</code><span>Bundle and ABAC contracts</span></li>
+              <li><code>ruff</code><span>Python tooling and tests</span></li>
+              <li><code>prek</code><span>Repository hooks</span></li>
+              <li><code>repoctl discover</code><span>Bundle boundaries</span></li>
+              <li><code>repoctl validate</code><span>Project and bundle metadata</span></li>
+              <li><code>databricks bundle validate</code><span>Target configuration</span></li>
+            </ul>
+          </li>
+          <li class="stage">
+            <p class="number">2</p>
+            <h3>Classify changed paths</h3>
+            <p><code>repoctl changed --base &lt;commit&gt;</code> maps each Git path to its immediate parent bundle.</p>
+            <ul id="paths" class="result"></ul>
+          </li>
+          <li class="stage">
+            <p class="number">3</p>
+            <h3>Build the CI matrix</h3>
+            <p>Only paths returned in <code>changed_bundles</code> become deployment entries.</p>
+            <pre class="output"><code id="output"></code></pre>
+          </li>
+          <li class="stage">
+            <p class="number">4</p>
+            <h3>Deploy each selected bundle</h3>
+            <div id="deployments" class="deployments"></div>
+          </li>
+        </ol>
+
+        <aside class="notice" aria-label="Current workflow limitation">
+          <strong>Current repository behavior:</strong> UAT conditionally deploys one hardcoded <code>abac-jira-project-access</code> bundle, while production always deploys that same bundle. The matrix above shows the intended collection-oriented behavior only.
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
