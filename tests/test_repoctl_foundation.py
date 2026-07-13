@@ -279,6 +279,16 @@ def test_classify_changed_files_maps_bundle_local_changes(tmp_path: Path) -> Non
     assert result.changed_bundles == [bundle_root]
 
 
+def test_classify_changed_files_keeps_root_app_changes_non_deploying(tmp_path: Path) -> None:
+    write_foundation_fixture(tmp_path)
+
+    result = classify_changed_files(tmp_path, ["apps/bundle-explorer/app.js"])
+
+    assert result.docs_only is False
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == []
+
+
 def test_classify_changed_files_marks_root_tooling_as_all_bundles(tmp_path: Path) -> None:
     bundle_root = write_foundation_fixture(tmp_path)
 

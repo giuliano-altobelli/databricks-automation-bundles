@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPLORER = ROOT / "projects" / "platform-governance" / "apps" / "bundle-explorer"
+EXPLORER = ROOT / "apps" / "bundle-explorer"
 
 
 def test_bundle_explorer_contains_the_static_app_and_browser_suite() -> None:

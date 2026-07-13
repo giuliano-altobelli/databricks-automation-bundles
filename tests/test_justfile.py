@@ -39,5 +39,5 @@ def test_root_justfile_serves_bundle_explorer_on_an_optional_port() -> None:
 
     assert recipe_commands(justfile_text, 'explore port="8000"') == [
         "python3 -m http.server {{port}} --bind 127.0.0.1 "
-        "--directory projects/platform-governance/apps/bundle-explorer"
+        "--directory apps/bundle-explorer"
     ]
