@@ -1,6 +1,9 @@
 bundle:
-  name: abac-jira-project-access
+  name: abac-jira-access
   databricks_cli_version: ">= 1.7.0"
+
+include:
+  - resources/*.yml
 
 variables:
   access_map_schema_fqn:
@@ -16,33 +19,6 @@ variables:
   run_as_service_principal_name:
     description: Application ID of the shared-target deployment service principal.
     default: ${workspace.current_user.userName}
-
-resources:
-  jobs:
-    apply_abac_jira_project_access:
-      name: apply_abac_jira_project_access
-      max_concurrent_runs: 1
-      tasks:
-        - task_key: preflight_target_schemas
-          sql_task:
-            file:
-              path: ./sql/preflight.sql
-              source: WORKSPACE
-            warehouse_id: ${var.sql_warehouse_id}
-            parameters:
-              access_map_schema_fqn: ${var.access_map_schema_fqn}
-              policy_schema_fqn: ${var.policy_schema_fqn}
-        - task_key: apply_abac_jira_project_access
-          depends_on:
-            - task_key: preflight_target_schemas
-          sql_task:
-            file:
-              path: ./sql/apply.sql
-              source: WORKSPACE
-            warehouse_id: ${var.sql_warehouse_id}
-            parameters:
-              access_map_table_fqn: ${var.access_map_table_fqn}
-              policy_udf_fqn: ${var.policy_udf_fqn}
 
 targets:
   dev:

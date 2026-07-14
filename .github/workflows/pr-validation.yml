@@ -60,7 +60,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-uat:
-    name: Deploy ABAC Jira project access to UAT
+    name: Deploy ABAC Jira access collection to UAT
     needs: validate
     if: >-
       github.event_name == 'pull_request' &&
@@ -68,12 +68,12 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       contains(
         fromJSON(needs.validate.outputs.changed_bundles),
-        'projects/platform-governance/bundles/abac-jira-project-access'
+        'projects/platform-governance/bundles/abac-jira-access'
       )
     runs-on: ubuntu-22.04
     environment: uat
     concurrency:
-      group: abac-jira-project-access-uat
+      group: abac-jira-access-uat
       cancel-in-progress: false
 
     steps:
@@ -83,8 +83,8 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@v1.7.0
 
-      - name: Validate, deploy, and apply UAT bundle
-        working-directory: projects/platform-governance/bundles/abac-jira-project-access
+      - name: Validate, deploy, and apply UAT collection
+        working-directory: projects/platform-governance/bundles/abac-jira-access
         env:
           DATABRICKS_AUTH_TYPE: oauth-m2m
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
@@ -96,4 +96,4 @@ jobs:
           set -euo pipefail
           databricks bundle validate -t uat
           databricks bundle deploy -t uat
-          databricks bundle run -t uat apply_abac_jira_project_access
+          databricks bundle run -t uat project

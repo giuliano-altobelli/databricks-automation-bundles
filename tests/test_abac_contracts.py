@@ -6,12 +6,13 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ROOT = (
-    ROOT / "projects" / "platform-governance" / "bundles" / "abac-jira-project-access"
+    ROOT / "projects" / "platform-governance" / "bundles" / "abac-jira-access"
 )
-FIXTURE_ROOT = BUNDLE_ROOT / "tests" / "fixtures"
-ACCESS_MAP_ROWS_FIXTURE = FIXTURE_ROOT / "access_map_rows.json"
-CONTRACT_CASES_FIXTURE = FIXTURE_ROOT / "contract_cases.json"
-APPLY_SQL = BUNDLE_ROOT / "sql" / "apply.sql"
+PROJECT_ROOT = BUNDLE_ROOT / "maps" / "project"
+FIXTURE_ROOT = PROJECT_ROOT / "fixtures"
+ACCESS_MAP_ROWS_FIXTURE = FIXTURE_ROOT / "rows.json"
+CONTRACT_CASES_FIXTURE = FIXTURE_ROOT / "cases.json"
+APPLY_SQL = PROJECT_ROOT / "apply.sql"
 FIXED_NOW = datetime.fromisoformat("2026-07-08T12:00:00+00:00")
 ALLOWED_ACCESS_LEVELS = {"read", "admin_view"}
 
