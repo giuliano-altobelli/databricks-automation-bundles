@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bundle explorer browser tests</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="../style.css">
+  </head>
+  <body>
+    <main class="shell suite">
+      <p class="eyebrow">Local browser suite</p>
+      <h1>Bundle explorer tests</h1>
+      <p class="lede">Each case mounts a fresh application frame and verifies user-visible behavior.</p>
+      <output id="summary" class="status" aria-live="polite">Running…</output>
+      <ol id="results" class="results"></ol>
+      <div id="fixture" aria-label="Application under test"></div>
+    </main>
+    <script type="module" src="./test.js"></script>
+  </body>
+</html>

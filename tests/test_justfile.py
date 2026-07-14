@@ -32,3 +32,12 @@ def test_root_justfile_exposes_bootstrap_and_verify_recipes() -> None:
         "uv run repoctl validate",
         "uv run repoctl changed --base HEAD",
     ]
+
+
+def test_root_justfile_serves_bundle_explorer_on_an_optional_port() -> None:
+    justfile_text = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+
+    assert recipe_commands(justfile_text, 'explore port="8000"') == [
+        "python3 -m http.server {{port}} --bind 127.0.0.1 "
+        "--directory apps/bundle-explorer"
+    ]
