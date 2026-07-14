@@ -1,13 +1,14 @@
 import re
 from pathlib import Path
 
+from repoctl.changes import classify_changed_files
 from repoctl.discovery import discover
 from repoctl.metadata import load_metadata
 from repoctl.validation import validate_repo
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ROOT = (
-    ROOT / "projects" / "platform-governance" / "bundles" / "abac-jira-project-access"
+    ROOT / "projects" / "platform-governance" / "bundles" / "abac-jira-access"
 )
 EXPECTED_ACCESS_MAP_COLUMNS = {
     "effective_principal": ("STRING", "NOT NULL"),
@@ -18,10 +19,13 @@ EXPECTED_ACCESS_MAP_COLUMNS = {
     "expires_at": ("TIMESTAMP", "NULL"),
 }
 SQL_ROOT = BUNDLE_ROOT / "sql"
-APPLY_SQL = SQL_ROOT / "apply.sql"
+MAP_ROOT = BUNDLE_ROOT / "maps" / "project"
+RESOURCE_ROOT = BUNDLE_ROOT / "resources"
+APPLY_SQL = MAP_ROOT / "apply.sql"
 PREFLIGHT_SQL = SQL_ROOT / "preflight.sql"
-JIRA_ROW_FILTER = SQL_ROOT / "jira_project_row_filter.sql"
+JIRA_ROW_FILTER = MAP_ROOT / "filter.sql"
 NATIVE_DAB_CONFIG = BUNDLE_ROOT / "databricks.yml"
+PROJECT_RESOURCE = RESOURCE_ROOT / "project.yml"
 REPOCTL_BUNDLE_METADATA = BUNDLE_ROOT / "repoctl.bundle.yaml"
 EXPECTED_APPLY_SQL_PARAMETERS = {
     "access_map_table_fqn",
@@ -51,25 +55,36 @@ def test_discovery_finds_abac_dogfood_bundle_with_expected_metadata() -> None:
         bundle
         for bundle in result.bundles
         if bundle.path.relative_to(ROOT).as_posix()
-        == "projects/platform-governance/bundles/abac-jira-project-access"
+        == "projects/platform-governance/bundles/abac-jira-access"
     )
 
     assert bundle.project == "platform-governance"
-    assert bundle.name == "abac-jira-project-access"
+    assert bundle.name == "abac-jira-access"
     assert bundle.metadata_path == REPOCTL_BUNDLE_METADATA
-    assert bundle.metadata["type"] == "abac-access-map"
+    assert bundle.metadata["type"] == "abac-access-collection"
+
+
+def test_project_map_change_selects_jira_collection_bundle() -> None:
+    changed_file = (MAP_ROOT / "apply.sql").relative_to(ROOT).as_posix()
+
+    result = classify_changed_files(ROOT, [changed_file])
+
+    assert result.changed_bundles == [BUNDLE_ROOT]
 
 
 def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     assert NATIVE_DAB_CONFIG.is_file()
+    assert PROJECT_RESOURCE.is_file()
     assert REPOCTL_BUNDLE_METADATA.is_file()
     assert not (BUNDLE_ROOT / "bundle.yaml").exists()
 
     config = load_metadata(NATIVE_DAB_CONFIG)
+    resource = load_metadata(PROJECT_RESOURCE)
 
-    assert set(config) == {"bundle", "variables", "resources", "targets"}
-    assert config["bundle"]["name"] == "abac-jira-project-access"
+    assert set(config) == {"bundle", "include", "variables", "targets"}
+    assert config["bundle"]["name"] == "abac-jira-access"
     assert config["bundle"]["databricks_cli_version"] == ">= 1.7.0"
+    assert config["include"] == ["resources/*.yml"]
     assert set(config["variables"]) == EXPECTED_FQN_VARIABLES | {
         "sql_warehouse_id",
         "run_as_service_principal_name",
@@ -82,7 +97,7 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     assert config["targets"]["dev"]["default"] is True
     assert config["targets"]["uat"]["mode"] == "production"
     assert config["targets"]["prod"]["mode"] == "production"
-    assert "include" not in config
+    assert "resources" not in config
 
     expected_target_values = {
         "dev": {
@@ -133,7 +148,9 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
             "${bundle.name}/${bundle.target}"
         )
 
-    job = config["resources"]["jobs"]["apply_abac_jira_project_access"]
+    assert set(resource) == {"resources"}
+    assert set(resource["resources"]["jobs"]) == {"project"}
+    job = resource["resources"]["jobs"]["project"]
     assert job["name"] == "apply_abac_jira_project_access"
     assert job["max_concurrent_runs"] == 1
     assert len(job["tasks"]) == 2
@@ -146,7 +163,7 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     preflight_task = tasks["preflight_target_schemas"]
     assert "depends_on" not in preflight_task
     assert preflight_task["sql_task"]["file"] == {
-        "path": "./sql/preflight.sql",
+        "path": "../sql/preflight.sql",
         "source": "WORKSPACE",
     }
     assert preflight_task["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
@@ -157,7 +174,7 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     apply_task = tasks["apply_abac_jira_project_access"]
     assert apply_task["depends_on"] == [{"task_key": "preflight_target_schemas"}]
     assert apply_task["sql_task"]["file"] == {
-        "path": "./sql/apply.sql",
+        "path": "../maps/project/apply.sql",
         "source": "WORKSPACE",
     }
     assert apply_task["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
@@ -165,9 +182,14 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
         name: f"${{var.{name}}}" for name in EXPECTED_APPLY_SQL_PARAMETERS
     }
     assert all(
-        task["sql_task"]["file"]["path"] != "./sql/jira_project_row_filter.sql"
+        task["sql_task"]["file"]["path"] != "../maps/project/filter.sql"
         for task in tasks.values()
     )
+
+
+def test_abac_dogfood_collection_contains_only_project_access_map() -> None:
+    assert {path.name for path in RESOURCE_ROOT.glob("*.yml")} == {"project.yml"}
+    assert {path.name for path in (BUNDLE_ROOT / "maps").iterdir()} == {"project"}
 
 
 def test_abac_dogfood_native_bundle_does_not_embed_authentication_credentials() -> None:
@@ -226,10 +248,11 @@ def extract_access_map_ddl_columns(sql: str) -> dict[str, tuple[str, str]]:
 
 
 def test_abac_dogfood_sql_source_files_exist() -> None:
-    assert {path.name for path in SQL_ROOT.glob("*.sql")} == {
-        "apply.sql",
-        "jira_project_row_filter.sql",
-        "preflight.sql",
+    assert {path.name for path in SQL_ROOT.glob("*.sql")} == {"preflight.sql"}
+    assert {path.name for path in MAP_ROOT.glob("*.sql")} == {"apply.sql", "filter.sql"}
+    assert {path.name for path in (MAP_ROOT / "fixtures").glob("*.json")} == {
+        "cases.json",
+        "rows.json",
     }
 
 

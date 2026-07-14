@@ -52,12 +52,12 @@ jobs:
           uv run repoctl changed --base "$CHANGED_BASE"
 
   deploy-prod:
-    name: Deploy ABAC Jira project access to prod
+    name: Deploy ABAC Jira access collection to prod
     needs: verify
     runs-on: ubuntu-22.04
     environment: prod
     concurrency:
-      group: abac-jira-project-access-prod
+      group: abac-jira-access-prod
       cancel-in-progress: false
 
     steps:
@@ -67,8 +67,8 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@v1.7.0
 
-      - name: Validate, deploy, and apply production bundle
-        working-directory: projects/platform-governance/bundles/abac-jira-project-access
+      - name: Validate, deploy, and apply production collection
+        working-directory: projects/platform-governance/bundles/abac-jira-access
         env:
           DATABRICKS_AUTH_TYPE: oauth-m2m
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
@@ -80,4 +80,4 @@ jobs:
           set -euo pipefail
           databricks bundle validate -t prod
           databricks bundle deploy -t prod
-          databricks bundle run -t prod apply_abac_jira_project_access
+          databricks bundle run -t prod project

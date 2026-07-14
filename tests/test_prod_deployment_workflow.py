@@ -4,7 +4,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "prod-deployment.yml"
-BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-project-access"
+BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-access"
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 SETUP_UV_ACTION = "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78"
 
@@ -51,7 +51,7 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     assert deploy["needs"] == "verify"
     assert deploy["environment"] == "prod"
     assert deploy["concurrency"] == {
-        "group": "abac-jira-project-access-prod",
+        "group": "abac-jira-access-prod",
         "cancel-in-progress": False,
     }
     assert {
@@ -105,7 +105,7 @@ def test_prod_deploy_job_uses_oauth_m2m_and_expected_commands() -> None:
     assert executable_commands(command_step["run"]) == [
         "databricks bundle validate -t prod",
         "databricks bundle deploy -t prod",
-        "databricks bundle run -t prod apply_abac_jira_project_access",
+        "databricks bundle run -t prod project",
     ]
     assert command_step["env"] == {
         "DATABRICKS_AUTH_TYPE": "oauth-m2m",

@@ -1,15 +1,26 @@
-# ABAC Jira Project Access Bundle
+# ABAC Jira Access Collection
 
-This live Databricks bundle owns the Jira project-key access map and its
-policy-supporting, fail-closed SQL UDF. It deploys the same target-agnostic SQL
-through three targets: isolated local development in the sandbox workspace,
-shared UAT in that sandbox, and production in the prod workspace.
+This live Databricks bundle is the deployment boundary for Jira access maps.
+The collection currently owns one access map, `project`, which manages the
+Jira project-key access table and its fail-closed policy-supporting SQL UDF.
+
+The collection deploys the same target-agnostic SQL through three targets:
+isolated local development in the sandbox workspace, shared UAT in that
+sandbox, and production in the production workspace.
+
+## Collection Layout
+
+`databricks.yml` owns the collection identity, shared variables, and targets.
+It includes the independently runnable access-map jobs from `resources/*.yml`.
+
+The `project` resource in `resources/project.yml` runs a shared read-only
+schema preflight and then `maps/project/apply.sql`. Project-specific SQL and
+contract fixtures remain together under `maps/project/`; shared SQL remains
+under `sql/`.
 
 ## Live Resources
 
-The `apply_abac_jira_project_access` job runs a read-only schema preflight and
-then `sql/apply.sql` on an existing SQL warehouse. The apply task creates or
-updates only:
+The `project` resource creates or updates only:
 
 - `dev`: `personal.<current-user-short-name>.jira_project_access` and
   `personal.<current-user-short-name>.can_read_jira_project`
@@ -18,14 +29,14 @@ updates only:
 - `prod`: `prod_security.access_maps.jira_project_access` and
   `prod_security.policies.can_read_jira_project`
 
-The bundle does not create catalogs or schemas, attach row filters, write Unity
-Catalog audit records, or manage Terraform-owned platform controls.
+The collection does not create catalogs or schemas, attach row filters, write
+Unity Catalog audit records, or manage Terraform-owned platform controls.
 
 ## SQL Execution Contract
 
-The targets pass complete fully qualified names into SQL task parameters. The
-apply task receives `access_map_table_fqn` and `policy_udf_fqn`; every dynamic
-object reference is a single marker such as
+Targets pass complete fully qualified names into SQL task parameters. The
+project apply task receives `access_map_table_fqn` and `policy_udf_fqn`; every
+dynamic object reference is a single marker such as
 `IDENTIFIER(:access_map_table_fqn)`. Deployable SQL never constructs an object
 name with string concatenation.
 
@@ -39,12 +50,12 @@ Databricks SQL / Databricks Runtime 18.0 or later parameter-marker semantics.
 Passing each FQN as one marker also avoids the identifier-expression
 concatenation deprecated in DBR 18.
 
-`sql/jira_project_row_filter.sql` is a production-specific Terraform predicate
+`maps/project/filter.sql` is a production-specific Terraform predicate
 contract for `prod_security.policies.can_read_jira_project`. The Databricks job
 never executes it; Terraform remains responsible for live attachment and
 rollout.
 
-## Local Dev Workflow
+## Local Development Workflow
 
 The `dev` target is local-only. Use an attended Databricks CLI profile for the
 sandbox workspace. OAuth U2M is preferred; a personal access token remains a
@@ -56,21 +67,20 @@ export BUNDLE_VAR_sql_warehouse_id="<sandbox-sql-warehouse-id>"
 
 databricks bundle validate -t dev -p sandbox-infra
 databricks bundle deploy -t dev -p sandbox-infra
-databricks bundle run -t dev -p sandbox-infra apply_abac_jira_project_access
+databricks bundle run -t dev -p sandbox-infra project
 ```
 
-Development-mode deployments and the SQL apply job use the authenticated
-developer's identity. The bundle resolves both schemas from
+Development-mode deployments and the project job use the authenticated
+developer's identity. The collection resolves both schemas from
 `${workspace.current_user.short_name}`, keeping every developer's table and UDF
 inside their own `personal` catalog schema. CI must not deploy the `dev` target.
 
 ## CI Authentication
 
-Pull-request CI deploys `uat` to the sandbox workspace with the sandbox
-deployment service principal. Main-branch CI deploys `prod` with the production
-deployment service principal. Both workflows use OAuth M2M and read the same
-names from their target-specific GitHub environment; credentials are never
-stored in this bundle:
+Pull-request CI deploys `uat` to the sandbox workspace when this collection is
+reported as changed. Main-branch CI always deploys `prod`. Both workflows use
+OAuth M2M and read the same names from their target-specific GitHub environment;
+credentials are never stored in this collection:
 
 - environment variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
   `DATABRICKS_SQL_WAREHOUSE_ID`

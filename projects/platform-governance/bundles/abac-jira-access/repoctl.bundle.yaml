@@ -1,6 +1,6 @@
 version: 1
-name: abac-jira-project-access
-type: abac-access-map
+name: abac-jira-access
+type: abac-access-collection
 owner:
   team: platform-governance
 review:

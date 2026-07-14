@@ -1,4 +1,4 @@
--- Jira project access map for ABAC policy enforcement.
+-- Jira project access-map implementation for ABAC policy enforcement.
 -- This table is an enforcement index for current effective access,
 -- not an approval ledger or wide audit table.
 CREATE TABLE IF NOT EXISTS IDENTIFIER(:access_map_table_fqn) (

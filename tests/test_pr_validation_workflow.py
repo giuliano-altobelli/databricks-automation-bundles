@@ -5,7 +5,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "pr-validation.yml"
-BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-project-access"
+BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-access"
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 SETUP_UV_ACTION = "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78"
 
@@ -168,7 +168,7 @@ def test_pr_deploy_job_is_gated_to_trusted_same_repository_pull_requests() -> No
         f"'{BUNDLE_ROOT}' )"
     )
     assert deploy["concurrency"] == {
-        "group": "abac-jira-project-access-uat",
+        "group": "abac-jira-access-uat",
         "cancel-in-progress": False,
     }
 
@@ -187,7 +187,7 @@ def test_pr_deploy_job_uses_oauth_m2m_and_expected_uat_commands() -> None:
     assert executable_commands(command_step["run"]) == [
         "databricks bundle validate -t uat",
         "databricks bundle deploy -t uat",
-        "databricks bundle run -t uat apply_abac_jira_project_access",
+        "databricks bundle run -t uat project",
     ]
     assert command_step["env"] == {
         "DATABRICKS_AUTH_TYPE": "oauth-m2m",
