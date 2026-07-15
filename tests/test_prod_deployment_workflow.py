@@ -107,14 +107,12 @@ def test_prod_deploy_jobs_parameterize_both_collections() -> None:
         deploy = jobs[identifier]
         assert deploy["uses"] == DEPLOY_WORKFLOW
         assert deploy["with"] == collection
-        assert deploy["permissions"] == {
-            "contents": "read",
-            "id-token": "write",
-        }
+        assert deploy["permissions"] == {"contents": "read"}
         assert "secrets" not in deploy
 
     groups = {collection["group"] for collection in COLLECTIONS.values()}
     assert len(groups) == len(COLLECTIONS)
+    assert "id-token" not in WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_prod_workflow_has_no_dev_uat_pat_or_evidence_uploads() -> None:
