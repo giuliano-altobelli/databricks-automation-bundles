@@ -29,7 +29,10 @@ def test_deploy_workflow_is_reusable_with_explicit_collection_inputs() -> None:
         "inputs": {
             name: {"required": True, "type": "string"}
             for name in ("path", "resource", "target", "group")
-        }
+        },
+        "secrets": {
+            "DATABRICKS_CLIENT_SECRET": {"required": False},
+        },
     }
     assert parsed["permissions"] == {"contents": "read"}
     assert set(parsed["jobs"]) == {"deploy"}

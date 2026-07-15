@@ -15,6 +15,9 @@ on:
       group:
         required: true
         type: string
+    secrets:
+      DATABRICKS_CLIENT_SECRET:
+        required: false
 
 permissions:
   contents: read
