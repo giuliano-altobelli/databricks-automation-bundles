@@ -31,7 +31,10 @@ def test_deploy_workflow_is_reusable_with_explicit_collection_inputs() -> None:
             for name in ("path", "resource", "target", "group")
         }
     }
-    assert parsed["permissions"] == {"contents": "read"}
+    assert parsed["permissions"] == {
+        "contents": "read",
+        "id-token": "write",
+    }
     assert set(parsed["jobs"]) == {"deploy"}
 
 
@@ -46,7 +49,7 @@ def test_deploy_workflow_isolates_environment_and_concurrency_by_input() -> None
     }
 
 
-def test_deploy_workflow_owns_oauth_and_bundle_commands() -> None:
+def test_deploy_workflow_owns_oidc_and_bundle_commands() -> None:
     deploy = workflow()["jobs"]["deploy"]
     checkout = next(
         step for step in deploy["steps"] if step.get("uses", "").startswith("actions/checkout@")
@@ -69,10 +72,9 @@ def test_deploy_workflow_owns_oauth_and_bundle_commands() -> None:
         'databricks bundle run -t "$BUNDLE_TARGET" "$BUNDLE_RESOURCE"',
     ]
     assert command["env"] == {
-        "DATABRICKS_AUTH_TYPE": "oauth-m2m",
+        "DATABRICKS_AUTH_TYPE": "github-oidc",
         "DATABRICKS_HOST": "${{ vars.DATABRICKS_HOST }}",
         "DATABRICKS_CLIENT_ID": "${{ vars.DATABRICKS_CLIENT_ID }}",
-        "DATABRICKS_CLIENT_SECRET": "${{ secrets.DATABRICKS_CLIENT_SECRET }}",
         "BUNDLE_VAR_sql_warehouse_id": "${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}",
         "BUNDLE_VAR_run_as_service_principal_name": (
             "${{ vars.DATABRICKS_CLIENT_ID }}"
@@ -81,4 +83,7 @@ def test_deploy_workflow_owns_oauth_and_bundle_commands() -> None:
         "BUNDLE_RESOURCE": "${{ inputs.resource }}",
     }
     assert "env" not in deploy
-    assert "id-token" not in str(deploy)
+
+    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "oauth-m2m" not in workflow_text
+    assert "DATABRICKS_CLIENT_SECRET" not in workflow_text

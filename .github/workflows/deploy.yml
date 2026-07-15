@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
@@ -38,10 +39,9 @@ jobs:
       - name: Validate, deploy, and apply collection
         working-directory: ${{ inputs.path }}
         env:
-          DATABRICKS_AUTH_TYPE: oauth-m2m
+          DATABRICKS_AUTH_TYPE: github-oidc
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           BUNDLE_VAR_sql_warehouse_id: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
           BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
           BUNDLE_TARGET: ${{ inputs.target }}

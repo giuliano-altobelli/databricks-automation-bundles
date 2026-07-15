@@ -62,6 +62,9 @@ jobs:
   deploy-jira-uat:
     name: Deploy ABAC Jira access collection to UAT
     needs: validate
+    permissions:
+      contents: read
+      id-token: write
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -80,6 +83,9 @@ jobs:
   deploy-customer-uat:
     name: Deploy ABAC customer access collection to UAT
     needs: validate
+    permissions:
+      contents: read
+      id-token: write
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&

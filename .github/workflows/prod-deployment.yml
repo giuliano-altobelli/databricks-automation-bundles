@@ -54,6 +54,9 @@ jobs:
   deploy-jira-prod:
     name: Deploy ABAC Jira access collection to prod
     needs: verify
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy.yml
     with:
       path: projects/platform-governance/bundles/abac-jira-access
@@ -64,6 +67,9 @@ jobs:
   deploy-customer-prod:
     name: Deploy ABAC customer access collection to prod
     needs: verify
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy.yml
     with:
       path: projects/platform-governance/bundles/abac-customer-access

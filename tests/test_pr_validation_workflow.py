@@ -158,6 +158,7 @@ def test_pr_validation_job_never_receives_databricks_credentials() -> None:
     assert "env" not in validate
     assert "DATABRICKS_" not in validate_text
     assert "BUNDLE_VAR_" not in validate_text
+    assert "id-token" not in validate_text
     assert all(
         step.get("uses", "").split("@")[0] != "databricks/setup-cli"
         for step in validate["steps"]
@@ -175,6 +176,10 @@ def test_pr_deploy_jobs_are_independently_gated_and_parameterized() -> None:
         assert deploy["needs"] == "validate"
         assert deploy["uses"] == DEPLOY_WORKFLOW
         assert deploy["with"] == collection
+        assert deploy["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
         assert condition == (
             "github.event_name == 'pull_request' && "
             "github.event.pull_request.head.repo.full_name == github.repository && "

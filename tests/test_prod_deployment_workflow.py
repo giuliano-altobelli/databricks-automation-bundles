@@ -64,6 +64,7 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
 
     assert "environment" not in verify
     assert "env" not in verify
+    assert "id-token" not in str(verify)
     assert verify["runs-on"] == "ubuntu-22.04"
     for identifier in COLLECTIONS:
         deploy = parsed["jobs"][identifier]
@@ -106,6 +107,10 @@ def test_prod_deploy_jobs_parameterize_both_collections() -> None:
         deploy = jobs[identifier]
         assert deploy["uses"] == DEPLOY_WORKFLOW
         assert deploy["with"] == collection
+        assert deploy["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
         assert "secrets" not in deploy
 
     groups = {collection["group"] for collection in COLLECTIONS.values()}
