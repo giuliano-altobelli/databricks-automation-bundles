@@ -51,33 +51,22 @@ jobs:
           fi
           uv run repoctl changed --base "$CHANGED_BASE"
 
-  deploy-prod:
+  deploy-jira-prod:
     name: Deploy ABAC Jira access collection to prod
     needs: verify
-    runs-on: ubuntu-22.04
-    environment: prod
-    concurrency:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      path: projects/platform-governance/bundles/abac-jira-access
+      resource: project
+      target: prod
       group: abac-jira-access-prod
-      cancel-in-progress: false
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Install Databricks CLI
-        uses: databricks/setup-cli@v1.7.0
-
-      - name: Validate, deploy, and apply production collection
-        working-directory: projects/platform-governance/bundles/abac-jira-access
-        env:
-          DATABRICKS_AUTH_TYPE: oauth-m2m
-          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          BUNDLE_VAR_sql_warehouse_id: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
-          BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
-        run: |
-          set -euo pipefail
-          databricks bundle validate -t prod
-          databricks bundle deploy -t prod
-          databricks bundle run -t prod project
+  deploy-customer-prod:
+    name: Deploy ABAC customer access collection to prod
+    needs: verify
+    uses: ./.github/workflows/deploy.yml
+    with:
+      path: projects/platform-governance/bundles/abac-customer-access
+      resource: okta_group
+      target: prod
+      group: abac-customer-access-prod

@@ -88,20 +88,18 @@ inside their own `personal` catalog schema. CI must not deploy the `dev` target.
 
 ## CI Authentication
 
-Phase 1 does not change the existing deployment workflows. Phase 2 will wire
-pull-request deployment of this collection to `uat` and main-branch deployment
-to `prod`. Those workflows will use OAuth M2M and read the same names from their
-target-specific GitHub environment; credentials are never stored in this
-collection:
+Pull-request CI deploys `uat` when this collection is reported as changed.
+Main-branch CI deploys `prod` after repository verification. Both workflows use
+OAuth M2M and read the same names from their target-specific GitHub environment;
+credentials are never stored in this collection:
 
 - environment variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
   `DATABRICKS_SQL_WAREHOUSE_ID`
 - environment secret `DATABRICKS_CLIENT_SECRET`
 
-For `uat` and `prod`, phase 2 will also pass the authenticated deployment
-service principal as `BUNDLE_VAR_run_as_service_principal_name`. This gives
-each shared job and its SQL-created objects one stable run identity and
-deployment root.
+For `uat` and `prod`, the authenticated deployment service principal is also
+passed as `BUNDLE_VAR_run_as_service_principal_name`. This gives each shared
+job and its SQL-created objects one stable run identity and deployment root.
 
 OAuth M2M can later be replaced with GitHub OIDC federation by changing only
 the workflow authentication block and Databricks federation configuration.
