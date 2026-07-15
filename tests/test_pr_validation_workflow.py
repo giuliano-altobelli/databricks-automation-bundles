@@ -184,7 +184,9 @@ def test_pr_deploy_jobs_are_independently_gated_and_parameterized() -> None:
             "contains( fromJSON(needs.validate.outputs.changed_bundles), "
             f"'{collection['path']}' )"
         )
-        assert "secrets" not in deploy
+        assert deploy["secrets"] == {
+            "credential": "${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}",
+        }
 
     groups = {collection["group"] for collection in COLLECTIONS.values()}
     assert len(groups) == len(COLLECTIONS)

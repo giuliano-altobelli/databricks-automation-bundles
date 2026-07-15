@@ -20,7 +20,7 @@ def executable_commands(shell: str) -> list[str]:
     ]
 
 
-def test_deploy_workflow_is_reusable_with_explicit_collection_inputs() -> None:
+def test_deploy_workflow_is_reusable_with_explicit_contract() -> None:
     parsed = workflow()
     triggers = parsed.get("on") or parsed.get(True)
 
@@ -31,7 +31,7 @@ def test_deploy_workflow_is_reusable_with_explicit_collection_inputs() -> None:
             for name in ("path", "resource", "target", "group")
         },
         "secrets": {
-            "DATABRICKS_CLIENT_SECRET": {"required": False},
+            "credential": {"required": True},
         },
     }
     assert parsed["permissions"] == {"contents": "read"}
@@ -70,8 +70,7 @@ def test_deploy_workflow_owns_m2m_and_bundle_commands() -> None:
         ': "${DATABRICKS_HOST:?GitHub environment variable DATABRICKS_HOST is required}"',
         ': "${DATABRICKS_CLIENT_ID:?GitHub environment variable DATABRICKS_CLIENT_ID is required}"',
         (
-            ': "${DATABRICKS_CLIENT_SECRET:?GitHub environment secret '
-            'DATABRICKS_CLIENT_SECRET is required}"'
+            ': "${DATABRICKS_CLIENT_SECRET:?Databricks client secret is required}"'
         ),
         (
             ': "${BUNDLE_VAR_sql_warehouse_id:?GitHub environment variable '
@@ -85,7 +84,7 @@ def test_deploy_workflow_owns_m2m_and_bundle_commands() -> None:
         "DATABRICKS_AUTH_TYPE": "oauth-m2m",
         "DATABRICKS_HOST": "${{ vars.DATABRICKS_HOST }}",
         "DATABRICKS_CLIENT_ID": "${{ vars.DATABRICKS_CLIENT_ID }}",
-        "DATABRICKS_CLIENT_SECRET": "${{ secrets.DATABRICKS_CLIENT_SECRET }}",
+        "DATABRICKS_CLIENT_SECRET": "${{ secrets.credential }}",
         "BUNDLE_VAR_sql_warehouse_id": "${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}",
         "BUNDLE_VAR_run_as_service_principal_name": (
             "${{ vars.DATABRICKS_CLIENT_ID }}"

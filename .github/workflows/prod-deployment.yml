@@ -62,6 +62,8 @@ jobs:
       resource: project
       target: prod
       group: abac-jira-access-prod
+    secrets:
+      credential: ${{ secrets.DATABRICKS_PROD_CLIENT_SECRET }}
 
   deploy-customer-prod:
     name: Deploy ABAC customer access collection to prod
@@ -74,3 +76,5 @@ jobs:
       resource: okta_group
       target: prod
       group: abac-customer-access-prod
+    secrets:
+      credential: ${{ secrets.DATABRICKS_PROD_CLIENT_SECRET }}

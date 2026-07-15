@@ -108,7 +108,9 @@ def test_prod_deploy_jobs_parameterize_both_collections() -> None:
         assert deploy["uses"] == DEPLOY_WORKFLOW
         assert deploy["with"] == collection
         assert deploy["permissions"] == {"contents": "read"}
-        assert "secrets" not in deploy
+        assert deploy["secrets"] == {
+            "credential": "${{ secrets.DATABRICKS_PROD_CLIENT_SECRET }}",
+        }
 
     groups = {collection["group"] for collection in COLLECTIONS.values()}
     assert len(groups) == len(COLLECTIONS)
@@ -122,6 +124,7 @@ def test_prod_workflow_has_no_dev_uat_pat_or_evidence_uploads() -> None:
         "-t dev",
         "-t uat",
         "DATABRICKS_TOKEN",
+        "DATABRICKS_UAT_CLIENT_SECRET",
         "repoctl evidence",
         "actions/upload-artifact",
         "setup-just",

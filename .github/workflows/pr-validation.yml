@@ -78,6 +78,8 @@ jobs:
       resource: project
       target: uat
       group: abac-jira-access-uat
+    secrets:
+      credential: ${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}
 
   deploy-customer-uat:
     name: Deploy ABAC customer access collection to UAT
@@ -98,3 +100,5 @@ jobs:
       resource: okta_group
       target: uat
       group: abac-customer-access-uat
+    secrets:
+      credential: ${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}

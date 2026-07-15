@@ -79,17 +79,18 @@ inside their own `personal` catalog schema. CI must not deploy the `dev` target.
 
 Pull-request CI deploys `uat` to the sandbox workspace when this collection is
 reported as changed. Main-branch CI always deploys `prod`. Both workflows use
-OAuth M2M and read credentials from their target-specific GitHub environment:
+OAuth M2M. Each target-specific GitHub environment provides these variables:
 
 - variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
   `DATABRICKS_SQL_WAREHOUSE_ID`
-- secret `DATABRICKS_CLIENT_SECRET`
 
-Only deployment jobs enter the target environment and receive its secret. The
-reusable workflow reads the environment-scoped secret directly because caller
-environment variables and secrets are not passed through `workflow_call`. The
-Databricks CLI uses `oauth-m2m` with the target service principal. Each caller
-repository must define matching `uat` and `prod` environments.
+The caller repository provides `DATABRICKS_UAT_CLIENT_SECRET` and
+`DATABRICKS_PROD_CLIENT_SECRET` as repository secrets. Each deployment caller
+passes only its target credential to the reusable workflow, which maps it to
+`DATABRICKS_CLIENT_SECRET` for the Databricks CLI. This explicit mapping avoids
+GitHub's reusable-workflow limitation for environment secrets. Each caller
+repository must define matching `uat` and `prod` environments and both
+repository secrets.
 
 For `uat` and `prod`, the authenticated deployment service principal is also
 passed as `BUNDLE_VAR_run_as_service_principal_name`. This gives each shared

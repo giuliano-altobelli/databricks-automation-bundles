@@ -16,8 +16,8 @@ on:
         required: true
         type: string
     secrets:
-      DATABRICKS_CLIENT_SECRET:
-        required: false
+      credential:
+        required: true
 
 permissions:
   contents: read
@@ -44,7 +44,7 @@ jobs:
           DATABRICKS_AUTH_TYPE: oauth-m2m
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.credential }}
           BUNDLE_VAR_sql_warehouse_id: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
           BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
           BUNDLE_TARGET: ${{ inputs.target }}
@@ -53,7 +53,7 @@ jobs:
           set -euo pipefail
           : "${DATABRICKS_HOST:?GitHub environment variable DATABRICKS_HOST is required}"
           : "${DATABRICKS_CLIENT_ID:?GitHub environment variable DATABRICKS_CLIENT_ID is required}"
-          : "${DATABRICKS_CLIENT_SECRET:?GitHub environment secret DATABRICKS_CLIENT_SECRET is required}"
+          : "${DATABRICKS_CLIENT_SECRET:?Databricks client secret is required}"
           : "${BUNDLE_VAR_sql_warehouse_id:?GitHub environment variable DATABRICKS_SQL_WAREHOUSE_ID is required}"
           databricks bundle validate -t "$BUNDLE_TARGET"
           databricks bundle deploy -t "$BUNDLE_TARGET"
