@@ -1,0 +1,21 @@
+version: 1
+name: abac-customer-access
+type: abac-access-collection
+owner:
+  team: platform-governance
+review:
+  policy: owner-approval
+targets:
+  dev:
+    mode: development
+    default: true
+    local: true
+  uat:
+    mode: production
+    ci_only: true
+  prod:
+    mode: production
+    ci_only: true
+depends_on:
+  bundles: []
+  libs: []

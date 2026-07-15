@@ -5,7 +5,21 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "pr-validation.yml"
-BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-access"
+DEPLOY_WORKFLOW = "./.github/workflows/deploy.yml"
+COLLECTIONS = {
+    "deploy-jira-uat": {
+        "path": "projects/platform-governance/bundles/abac-jira-access",
+        "resource": "project",
+        "target": "uat",
+        "group": "abac-jira-access-uat",
+    },
+    "deploy-customer-uat": {
+        "path": "projects/platform-governance/bundles/abac-customer-access",
+        "resource": "okta_group",
+        "target": "uat",
+        "group": "abac-customer-access-uat",
+    },
+}
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 SETUP_UV_ACTION = "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78"
 
@@ -109,15 +123,12 @@ def test_pr_workflow_pins_runner_and_immutable_action_releases() -> None:
     validate_uses = [
         step["uses"] for step in parsed["jobs"]["validate"]["steps"] if "uses" in step
     ]
-    deploy_uses = [
-        step["uses"] for step in parsed["jobs"]["deploy-uat"]["steps"] if "uses" in step
-    ]
 
     assert validate_uses[:2] == [CHECKOUT_ACTION, SETUP_UV_ACTION]
-    assert deploy_uses[0] == CHECKOUT_ACTION
-    assert {
-        job["runs-on"] for job in parsed["jobs"].values()
-    } == {"ubuntu-22.04"}
+    assert parsed["jobs"]["validate"]["runs-on"] == "ubuntu-22.04"
+    assert set(parsed["jobs"]) == {"validate", *COLLECTIONS}
+    for identifier in COLLECTIONS:
+        assert parsed["jobs"][identifier]["uses"] == DEPLOY_WORKFLOW
 
 
 def test_pr_validation_workflow_writes_changed_bundle_summary() -> None:
@@ -147,6 +158,7 @@ def test_pr_validation_job_never_receives_databricks_credentials() -> None:
     assert "env" not in validate
     assert "DATABRICKS_" not in validate_text
     assert "BUNDLE_VAR_" not in validate_text
+    assert "id-token" not in validate_text
     assert all(
         step.get("uses", "").split("@")[0] != "databricks/setup-cli"
         for step in validate["steps"]
@@ -154,53 +166,31 @@ def test_pr_validation_job_never_receives_databricks_credentials() -> None:
     assert "databricks bundle" not in workflow_run_text()
 
 
-def test_pr_deploy_job_is_gated_to_trusted_same_repository_pull_requests() -> None:
-    deploy = workflow()["jobs"]["deploy-uat"]
-    condition = " ".join(deploy["if"].split())
+def test_pr_deploy_jobs_are_independently_gated_and_parameterized() -> None:
+    jobs = workflow()["jobs"]
 
-    assert deploy["needs"] == "validate"
-    assert deploy["environment"] == "uat"
-    assert condition == (
-        "github.event_name == 'pull_request' && "
-        "github.event.pull_request.head.repo.full_name == github.repository && "
-        "github.event.pull_request.user.login != 'dependabot[bot]' && "
-        "contains( fromJSON(needs.validate.outputs.changed_bundles), "
-        f"'{BUNDLE_ROOT}' )"
-    )
-    assert deploy["concurrency"] == {
-        "group": "abac-jira-access-uat",
-        "cancel-in-progress": False,
-    }
+    for identifier, collection in COLLECTIONS.items():
+        deploy = jobs[identifier]
+        condition = " ".join(deploy["if"].split())
 
+        assert deploy["needs"] == "validate"
+        assert deploy["uses"] == DEPLOY_WORKFLOW
+        assert deploy["with"] == collection
+        assert deploy["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
+        assert condition == (
+            "github.event_name == 'pull_request' && "
+            "github.event.pull_request.head.repo.full_name == github.repository && "
+            "github.event.pull_request.user.login != 'dependabot[bot]' && "
+            "contains( fromJSON(needs.validate.outputs.changed_bundles), "
+            f"'{collection['path']}' )"
+        )
+        assert "secrets" not in deploy
 
-def test_pr_deploy_job_uses_oauth_m2m_and_expected_uat_commands() -> None:
-    deploy = workflow()["jobs"]["deploy-uat"]
-    setup_step = next(
-        step for step in deploy["steps"] if step.get("uses", "").startswith("databricks/setup-cli@")
-    )
-    command_step = next(
-        step for step in deploy["steps"] if "databricks bundle" in step.get("run", "")
-    )
-
-    assert setup_step["uses"] == "databricks/setup-cli@v1.7.0"
-    assert command_step["working-directory"] == BUNDLE_ROOT
-    assert executable_commands(command_step["run"]) == [
-        "databricks bundle validate -t uat",
-        "databricks bundle deploy -t uat",
-        "databricks bundle run -t uat project",
-    ]
-    assert command_step["env"] == {
-        "DATABRICKS_AUTH_TYPE": "oauth-m2m",
-        "DATABRICKS_HOST": "${{ vars.DATABRICKS_HOST }}",
-        "DATABRICKS_CLIENT_ID": "${{ vars.DATABRICKS_CLIENT_ID }}",
-        "DATABRICKS_CLIENT_SECRET": "${{ secrets.DATABRICKS_CLIENT_SECRET }}",
-        "BUNDLE_VAR_sql_warehouse_id": "${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}",
-        "BUNDLE_VAR_run_as_service_principal_name": (
-            "${{ vars.DATABRICKS_CLIENT_ID }}"
-        ),
-    }
-    assert "env" not in deploy
-    assert "id-token" not in str(deploy)
+    groups = {collection["group"] for collection in COLLECTIONS.values()}
+    assert len(groups) == len(COLLECTIONS)
 
 
 def test_pr_workflow_does_not_target_dev_prod_or_upload_evidence() -> None:

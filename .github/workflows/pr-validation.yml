@@ -59,9 +59,12 @@ jobs:
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  deploy-uat:
+  deploy-jira-uat:
     name: Deploy ABAC Jira access collection to UAT
     needs: validate
+    permissions:
+      contents: read
+      id-token: write
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -70,30 +73,30 @@ jobs:
         fromJSON(needs.validate.outputs.changed_bundles),
         'projects/platform-governance/bundles/abac-jira-access'
       )
-    runs-on: ubuntu-22.04
-    environment: uat
-    concurrency:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      path: projects/platform-governance/bundles/abac-jira-access
+      resource: project
+      target: uat
       group: abac-jira-access-uat
-      cancel-in-progress: false
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Install Databricks CLI
-        uses: databricks/setup-cli@v1.7.0
-
-      - name: Validate, deploy, and apply UAT collection
-        working-directory: projects/platform-governance/bundles/abac-jira-access
-        env:
-          DATABRICKS_AUTH_TYPE: oauth-m2m
-          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          BUNDLE_VAR_sql_warehouse_id: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
-          BUNDLE_VAR_run_as_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
-        run: |
-          set -euo pipefail
-          databricks bundle validate -t uat
-          databricks bundle deploy -t uat
-          databricks bundle run -t uat project
+  deploy-customer-uat:
+    name: Deploy ABAC customer access collection to UAT
+    needs: validate
+    permissions:
+      contents: read
+      id-token: write
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(
+        fromJSON(needs.validate.outputs.changed_bundles),
+        'projects/platform-governance/bundles/abac-customer-access'
+      )
+    uses: ./.github/workflows/deploy.yml
+    with:
+      path: projects/platform-governance/bundles/abac-customer-access
+      resource: okta_group
+      target: uat
+      group: abac-customer-access-uat

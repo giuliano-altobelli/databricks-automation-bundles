@@ -1,0 +1,82 @@
+[
+  {
+    "effective_principal": "foobar@example.com",
+    "okta_group_name": "foo",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null
+  },
+  {
+    "effective_principal": "foobar@example.com",
+    "okta_group_name": "bar",
+    "access_level": "admin_view",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": "2026-12-31T23:59:59Z"
+  },
+  {
+    "effective_principal": "baz@example.com",
+    "okta_group_name": "baz",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null
+  },
+  {
+    "effective_principal": "inactive@example.com",
+    "okta_group_name": "inactive",
+    "access_level": "read",
+    "is_active": false,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null
+  },
+  {
+    "effective_principal": "future@example.com",
+    "okta_group_name": "future",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-07-09T00:00:00Z",
+    "expires_at": null
+  },
+  {
+    "effective_principal": "expired@example.com",
+    "okta_group_name": "expired",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": "2026-07-08T11:59:59Z"
+  },
+  {
+    "effective_principal": "boundary@example.com",
+    "okta_group_name": "starts-now",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-07-08T12:00:00Z",
+    "expires_at": null
+  },
+  {
+    "effective_principal": "boundary@example.com",
+    "okta_group_name": "expires-now",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": "2026-07-08T12:00:00Z"
+  },
+  {
+    "effective_principal": "unknown-level@example.com",
+    "okta_group_name": "unknown-level",
+    "access_level": "write",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null
+  },
+  {
+    "effective_principal": "someone-else@example.com",
+    "okta_group_name": "restricted",
+    "access_level": "read",
+    "is_active": true,
+    "valid_from": "2026-01-01T00:00:00Z",
+    "expires_at": null
+  }
+]

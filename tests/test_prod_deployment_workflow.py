@@ -4,7 +4,21 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "prod-deployment.yml"
-BUNDLE_ROOT = "projects/platform-governance/bundles/abac-jira-access"
+DEPLOY_WORKFLOW = "./.github/workflows/deploy.yml"
+COLLECTIONS = {
+    "deploy-jira-prod": {
+        "path": "projects/platform-governance/bundles/abac-jira-access",
+        "resource": "project",
+        "target": "prod",
+        "group": "abac-jira-access-prod",
+    },
+    "deploy-customer-prod": {
+        "path": "projects/platform-governance/bundles/abac-customer-access",
+        "resource": "okta_group",
+        "target": "prod",
+        "group": "abac-customer-access-prod",
+    },
+}
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 SETUP_UV_ACTION = "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78"
 
@@ -34,29 +48,28 @@ def test_prod_workflow_permissions_are_read_only() -> None:
     assert workflow()["permissions"] == {"contents": "read"}
 
 
-def test_prod_deploy_job_cannot_bypass_verification_failure() -> None:
-    deploy = workflow()["jobs"]["deploy-prod"]
+def test_prod_deploy_jobs_cannot_bypass_verification_failure() -> None:
+    jobs = workflow()["jobs"]
 
-    assert deploy["needs"] == "verify"
-    assert "if" not in deploy
+    assert set(jobs) == {"verify", *COLLECTIONS}
+    for identifier in COLLECTIONS:
+        deploy = jobs[identifier]
+        assert deploy["needs"] == "verify"
+        assert "if" not in deploy
 
 
 def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     parsed = workflow()
     verify = parsed["jobs"]["verify"]
-    deploy = parsed["jobs"]["deploy-prod"]
 
     assert "environment" not in verify
     assert "env" not in verify
-    assert deploy["needs"] == "verify"
-    assert deploy["environment"] == "prod"
-    assert deploy["concurrency"] == {
-        "group": "abac-jira-access-prod",
-        "cancel-in-progress": False,
-    }
-    assert {
-        job["runs-on"] for job in parsed["jobs"].values()
-    } == {"ubuntu-22.04"}
+    assert "id-token" not in str(verify)
+    assert verify["runs-on"] == "ubuntu-22.04"
+    for identifier in COLLECTIONS:
+        deploy = parsed["jobs"][identifier]
+        assert deploy["needs"] == "verify"
+        assert deploy["uses"] == DEPLOY_WORKFLOW
 
     assert [step.get("uses") for step in verify["steps"] if "uses" in step] == [
         CHECKOUT_ACTION,
@@ -87,37 +100,21 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     assert 'uv run repoctl changed --base "$CHANGED_BASE"' in changed_step["run"]
 
 
-def test_prod_deploy_job_uses_oauth_m2m_and_expected_commands() -> None:
-    deploy = workflow()["jobs"]["deploy-prod"]
-    checkout_step = next(
-        step for step in deploy["steps"] if step.get("uses", "").startswith("actions/checkout@")
-    )
-    setup_step = next(
-        step for step in deploy["steps"] if step.get("uses", "").startswith("databricks/setup-cli@")
-    )
-    command_step = next(
-        step for step in deploy["steps"] if "databricks bundle" in step.get("run", "")
-    )
+def test_prod_deploy_jobs_parameterize_both_collections() -> None:
+    jobs = workflow()["jobs"]
 
-    assert checkout_step["uses"] == CHECKOUT_ACTION
-    assert setup_step["uses"] == "databricks/setup-cli@v1.7.0"
-    assert command_step["working-directory"] == BUNDLE_ROOT
-    assert executable_commands(command_step["run"]) == [
-        "databricks bundle validate -t prod",
-        "databricks bundle deploy -t prod",
-        "databricks bundle run -t prod project",
-    ]
-    assert command_step["env"] == {
-        "DATABRICKS_AUTH_TYPE": "oauth-m2m",
-        "DATABRICKS_HOST": "${{ vars.DATABRICKS_HOST }}",
-        "DATABRICKS_CLIENT_ID": "${{ vars.DATABRICKS_CLIENT_ID }}",
-        "DATABRICKS_CLIENT_SECRET": "${{ secrets.DATABRICKS_CLIENT_SECRET }}",
-        "BUNDLE_VAR_sql_warehouse_id": "${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}",
-        "BUNDLE_VAR_run_as_service_principal_name": (
-            "${{ vars.DATABRICKS_CLIENT_ID }}"
-        ),
-    }
-    assert "env" not in deploy
+    for identifier, collection in COLLECTIONS.items():
+        deploy = jobs[identifier]
+        assert deploy["uses"] == DEPLOY_WORKFLOW
+        assert deploy["with"] == collection
+        assert deploy["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
+        assert "secrets" not in deploy
+
+    groups = {collection["group"] for collection in COLLECTIONS.values()}
+    assert len(groups) == len(COLLECTIONS)
 
 
 def test_prod_workflow_has_no_dev_uat_pat_or_evidence_uploads() -> None:
