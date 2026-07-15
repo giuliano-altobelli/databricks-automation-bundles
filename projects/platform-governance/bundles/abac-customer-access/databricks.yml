@@ -1,0 +1,55 @@
+bundle:
+  name: abac-customer-access
+  databricks_cli_version: ">= 1.7.0"
+
+include:
+  - resources/*.yml
+
+variables:
+  access_map_schema_fqn:
+    description: Fully qualified schema containing the customer Okta-group access map.
+  access_map_table_fqn:
+    description: Fully qualified customer Okta-group access-map table name.
+  policy_schema_fqn:
+    description: Fully qualified schema containing the customer Okta-group policy UDF.
+  policy_udf_fqn:
+    description: Fully qualified customer Okta-group policy UDF name.
+  sql_warehouse_id:
+    description: Existing serverless SQL warehouse used by the preflight and apply tasks.
+  run_as_service_principal_name:
+    description: Application ID of the shared-target deployment service principal.
+    default: ${workspace.current_user.userName}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      access_map_schema_fqn: personal.${workspace.current_user.short_name}
+      access_map_table_fqn: personal.${workspace.current_user.short_name}.customer_okta_group_access
+      policy_schema_fqn: personal.${workspace.current_user.short_name}
+      policy_udf_fqn: personal.${workspace.current_user.short_name}.can_read_customer_okta_group
+  uat:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${var.run_as_service_principal_name}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.run_as_service_principal_name}
+    variables:
+      access_map_schema_fqn: dev_security.access_maps
+      access_map_table_fqn: dev_security.access_maps.customer_okta_group_access
+      policy_schema_fqn: dev_security.policies
+      policy_udf_fqn: dev_security.policies.can_read_customer_okta_group
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${var.run_as_service_principal_name}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.run_as_service_principal_name}
+    variables:
+      access_map_schema_fqn: prod_security.access_maps
+      access_map_table_fqn: prod_security.access_maps.customer_okta_group_access
+      policy_schema_fqn: prod_security.policies
+      policy_udf_fqn: prod_security.policies.can_read_customer_okta_group
