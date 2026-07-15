@@ -64,7 +64,6 @@ jobs:
     needs: validate
     permissions:
       contents: read
-      id-token: write
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -79,13 +78,14 @@ jobs:
       resource: project
       target: uat
       group: abac-jira-access-uat
+    secrets:
+      credential: ${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}
 
   deploy-customer-uat:
     name: Deploy ABAC customer access collection to UAT
     needs: validate
     permissions:
       contents: read
-      id-token: write
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -100,3 +100,5 @@ jobs:
       resource: okta_group
       target: uat
       group: abac-customer-access-uat
+    secrets:
+      credential: ${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}

@@ -176,10 +176,7 @@ def test_pr_deploy_jobs_are_independently_gated_and_parameterized() -> None:
         assert deploy["needs"] == "validate"
         assert deploy["uses"] == DEPLOY_WORKFLOW
         assert deploy["with"] == collection
-        assert deploy["permissions"] == {
-            "contents": "read",
-            "id-token": "write",
-        }
+        assert deploy["permissions"] == {"contents": "read"}
         assert condition == (
             "github.event_name == 'pull_request' && "
             "github.event.pull_request.head.repo.full_name == github.repository && "
@@ -187,10 +184,13 @@ def test_pr_deploy_jobs_are_independently_gated_and_parameterized() -> None:
             "contains( fromJSON(needs.validate.outputs.changed_bundles), "
             f"'{collection['path']}' )"
         )
-        assert "secrets" not in deploy
+        assert deploy["secrets"] == {
+            "credential": "${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}",
+        }
 
     groups = {collection["group"] for collection in COLLECTIONS.values()}
     assert len(groups) == len(COLLECTIONS)
+    assert "id-token" not in WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_pr_workflow_does_not_target_dev_prod_or_upload_evidence() -> None:

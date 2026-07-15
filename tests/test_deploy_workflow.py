@@ -20,7 +20,7 @@ def executable_commands(shell: str) -> list[str]:
     ]
 
 
-def test_deploy_workflow_is_reusable_with_explicit_collection_inputs() -> None:
+def test_deploy_workflow_is_reusable_with_explicit_contract() -> None:
     parsed = workflow()
     triggers = parsed.get("on") or parsed.get(True)
 
@@ -29,12 +29,12 @@ def test_deploy_workflow_is_reusable_with_explicit_collection_inputs() -> None:
         "inputs": {
             name: {"required": True, "type": "string"}
             for name in ("path", "resource", "target", "group")
-        }
+        },
+        "secrets": {
+            "credential": {"required": True},
+        },
     }
-    assert parsed["permissions"] == {
-        "contents": "read",
-        "id-token": "write",
-    }
+    assert parsed["permissions"] == {"contents": "read"}
     assert set(parsed["jobs"]) == {"deploy"}
 
 
@@ -49,7 +49,7 @@ def test_deploy_workflow_isolates_environment_and_concurrency_by_input() -> None
     }
 
 
-def test_deploy_workflow_owns_oidc_and_bundle_commands() -> None:
+def test_deploy_workflow_owns_m2m_and_bundle_commands() -> None:
     deploy = workflow()["jobs"]["deploy"]
     checkout = next(
         step for step in deploy["steps"] if step.get("uses", "").startswith("actions/checkout@")
@@ -67,14 +67,24 @@ def test_deploy_workflow_owns_oidc_and_bundle_commands() -> None:
     assert setup["uses"] == "databricks/setup-cli@v1.7.0"
     assert command["working-directory"] == "${{ inputs.path }}"
     assert executable_commands(command["run"]) == [
+        ': "${DATABRICKS_HOST:?GitHub environment variable DATABRICKS_HOST is required}"',
+        ': "${DATABRICKS_CLIENT_ID:?GitHub environment variable DATABRICKS_CLIENT_ID is required}"',
+        (
+            ': "${DATABRICKS_CLIENT_SECRET:?Databricks client secret is required}"'
+        ),
+        (
+            ': "${BUNDLE_VAR_sql_warehouse_id:?GitHub environment variable '
+            'DATABRICKS_SQL_WAREHOUSE_ID is required}"'
+        ),
         'databricks bundle validate -t "$BUNDLE_TARGET"',
         'databricks bundle deploy -t "$BUNDLE_TARGET"',
         'databricks bundle run -t "$BUNDLE_TARGET" "$BUNDLE_RESOURCE"',
     ]
     assert command["env"] == {
-        "DATABRICKS_AUTH_TYPE": "github-oidc",
+        "DATABRICKS_AUTH_TYPE": "oauth-m2m",
         "DATABRICKS_HOST": "${{ vars.DATABRICKS_HOST }}",
         "DATABRICKS_CLIENT_ID": "${{ vars.DATABRICKS_CLIENT_ID }}",
+        "DATABRICKS_CLIENT_SECRET": "${{ secrets.credential }}",
         "BUNDLE_VAR_sql_warehouse_id": "${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}",
         "BUNDLE_VAR_run_as_service_principal_name": (
             "${{ vars.DATABRICKS_CLIENT_ID }}"
@@ -85,5 +95,5 @@ def test_deploy_workflow_owns_oidc_and_bundle_commands() -> None:
     assert "env" not in deploy
 
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "oauth-m2m" not in workflow_text
-    assert "DATABRICKS_CLIENT_SECRET" not in workflow_text
+    assert "github-oidc" not in workflow_text
+    assert "id-token" not in workflow_text

@@ -90,17 +90,18 @@ inside their own `personal` catalog schema. CI must not deploy the `dev` target.
 
 Pull-request CI deploys `uat` when this collection is reported as changed.
 Main-branch CI deploys `prod` after repository verification. Both workflows use
-GitHub OIDC and read the same names from their target-specific GitHub
-environment:
+OAuth M2M. Each target-specific GitHub environment provides these variables:
 
-- environment variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
+- variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
   `DATABRICKS_SQL_WAREHOUSE_ID`
 
-Only deployment jobs receive `contents: read` and `id-token: write`. The
-Databricks CLI uses `github-oidc` to exchange the GitHub token, so no Databricks
-client secret is stored in GitHub. The `uat` federation policy maps to
-`sandbox-infra-bundle-deployment`; the `prod` policy maps to
-`prod-infra-bundle-deployment`.
+The caller repository provides `DATABRICKS_UAT_CLIENT_SECRET` and
+`DATABRICKS_PROD_CLIENT_SECRET` as repository secrets. Each deployment caller
+passes only its target credential to the reusable workflow, which maps it to
+`DATABRICKS_CLIENT_SECRET` for the Databricks CLI. This explicit mapping avoids
+GitHub's reusable-workflow limitation for environment secrets. Each caller
+repository must define matching `uat` and `prod` environments and both
+repository secrets.
 
 For `uat` and `prod`, the authenticated deployment service principal is also
 passed as `BUNDLE_VAR_run_as_service_principal_name`. This gives each shared
