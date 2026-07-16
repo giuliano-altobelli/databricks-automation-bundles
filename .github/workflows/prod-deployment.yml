@@ -65,16 +65,16 @@ jobs:
     secrets:
       credential: ${{ secrets.DATABRICKS_PROD_CLIENT_SECRET }}
 
-  deploy-customer-prod:
-    name: Deploy ABAC customer access collection to prod
+  deploy-general-prod:
+    name: Deploy ABAC general access collection to prod
     needs: verify
     permissions:
       contents: read
     uses: ./.github/workflows/deploy.yml
     with:
-      path: projects/platform-governance/bundles/abac-customer-access
+      path: projects/platform-governance/bundles/abac-general-access
       resource: okta_group
       target: prod
-      group: abac-customer-access-prod
+      group: abac-general-access-prod
     secrets:
       credential: ${{ secrets.DATABRICKS_PROD_CLIENT_SECRET }}

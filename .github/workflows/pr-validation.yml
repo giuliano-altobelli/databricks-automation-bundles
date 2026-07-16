@@ -81,8 +81,8 @@ jobs:
     secrets:
       credential: ${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}
 
-  deploy-customer-uat:
-    name: Deploy ABAC customer access collection to UAT
+  deploy-general-uat:
+    name: Deploy ABAC general access collection to UAT
     needs: validate
     permissions:
       contents: read
@@ -92,13 +92,13 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       contains(
         fromJSON(needs.validate.outputs.changed_bundles),
-        'projects/platform-governance/bundles/abac-customer-access'
+        'projects/platform-governance/bundles/abac-general-access'
       )
     uses: ./.github/workflows/deploy.yml
     with:
-      path: projects/platform-governance/bundles/abac-customer-access
+      path: projects/platform-governance/bundles/abac-general-access
       resource: okta_group
       target: uat
-      group: abac-customer-access-uat
+      group: abac-general-access-uat
     secrets:
       credential: ${{ secrets.DATABRICKS_UAT_CLIENT_SECRET }}
