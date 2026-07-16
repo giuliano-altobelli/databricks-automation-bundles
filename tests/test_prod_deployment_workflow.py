@@ -12,11 +12,11 @@ COLLECTIONS = {
         "target": "prod",
         "group": "abac-jira-access-prod",
     },
-    "deploy-customer-prod": {
-        "path": "projects/platform-governance/bundles/abac-customer-access",
+    "deploy-general-prod": {
+        "path": "projects/platform-governance/bundles/abac-general-access",
         "resource": "okta_group",
         "target": "prod",
-        "group": "abac-customer-access-prod",
+        "group": "abac-general-access-prod",
     },
 }
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"

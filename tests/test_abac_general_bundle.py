@@ -7,7 +7,7 @@ from repoctl.metadata import load_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = (
-    ROOT / "projects" / "platform-governance" / "bundles" / "abac-customer-access"
+    ROOT / "projects" / "platform-governance" / "bundles" / "abac-general-access"
 )
 MAP = BUNDLE / "maps" / "okta-group"
 RESOURCE = BUNDLE / "resources" / "okta-group.yml"
@@ -70,11 +70,11 @@ def columns(sql: str) -> dict[str, tuple[str, str]]:
     return result
 
 
-def test_repoctl_discovers_and_classifies_customer_collection() -> None:
+def test_repoctl_discovers_and_classifies_general_collection() -> None:
     discovery = discover(ROOT)
     bundle = next(item for item in discovery.bundles if item.path == BUNDLE)
 
-    assert bundle.name == "abac-customer-access"
+    assert bundle.name == "abac-general-access"
     assert bundle.project == "platform-governance"
     assert bundle.metadata_path == METADATA
     assert bundle.metadata["type"] == "abac-access-collection"
@@ -92,11 +92,11 @@ def test_repoctl_discovers_and_classifies_customer_collection() -> None:
     assert changed.changed_bundles == [BUNDLE]
 
 
-def test_native_bundle_has_exact_targets_and_customer_destinations() -> None:
+def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
     configuration = load_metadata(CONFIGURATION)
 
     assert set(configuration) == {"bundle", "include", "variables", "targets"}
-    assert configuration["bundle"]["name"] == "abac-customer-access"
+    assert configuration["bundle"]["name"] == "abac-general-access"
     assert configuration["bundle"]["databricks_cli_version"] == ">= 1.7.0"
     assert configuration["include"] == ["resources/*.yml"]
     assert set(configuration["variables"]) == (
@@ -111,29 +111,29 @@ def test_native_bundle_has_exact_targets_and_customer_destinations() -> None:
             "access_map_schema_fqn": "personal.${workspace.current_user.short_name}",
             "access_map_table_fqn": (
                 "personal.${workspace.current_user.short_name}."
-                "customer_okta_group_access"
+                "okta_group_access"
             ),
             "policy_schema_fqn": "personal.${workspace.current_user.short_name}",
             "policy_udf_fqn": (
                 "personal.${workspace.current_user.short_name}."
-                "can_read_customer_okta_group"
+                "can_read_okta_group"
             ),
         },
         "uat": {
             "access_map_schema_fqn": "dev_security.access_maps",
             "access_map_table_fqn": (
-                "dev_security.access_maps.customer_okta_group_access"
+                "dev_security.access_maps.okta_group_access"
             ),
             "policy_schema_fqn": "dev_security.policies",
-            "policy_udf_fqn": "dev_security.policies.can_read_customer_okta_group",
+            "policy_udf_fqn": "dev_security.policies.can_read_okta_group",
         },
         "prod": {
             "access_map_schema_fqn": "prod_security.access_maps",
             "access_map_table_fqn": (
-                "prod_security.access_maps.customer_okta_group_access"
+                "prod_security.access_maps.okta_group_access"
             ),
             "policy_schema_fqn": "prod_security.policies",
-            "policy_udf_fqn": "prod_security.policies.can_read_customer_okta_group",
+            "policy_udf_fqn": "prod_security.policies.can_read_okta_group",
         },
     }
     for target, expected in destinations.items():
@@ -176,13 +176,13 @@ def test_okta_group_resource_runs_only_preflight_and_apply() -> None:
     jobs = resource["resources"]["jobs"]
     assert len(jobs) == 1
     job = next(iter(jobs.values()))
-    assert job["name"] == "apply_abac_customer_okta_group_access"
+    assert job["name"] == "apply_abac_okta_group_access"
     assert job["max_concurrent_runs"] == 1
 
     tasks = {task["task_key"]: task for task in job["tasks"]}
     assert set(tasks) == {
         "preflight_target_schemas",
-        "apply_abac_customer_okta_group_access",
+        "apply_abac_okta_group_access",
     }
     assert "depends_on" not in tasks["preflight_target_schemas"]
     assert tasks["preflight_target_schemas"]["sql_task"]["file"] == {
@@ -196,7 +196,7 @@ def test_okta_group_resource_runs_only_preflight_and_apply() -> None:
         name: f"${{var.{name}}}" for name in PREFLIGHT_PARAMETERS
     }
 
-    application = tasks["apply_abac_customer_okta_group_access"]
+    application = tasks["apply_abac_okta_group_access"]
     assert application["depends_on"] == [{"task_key": "preflight_target_schemas"}]
     assert application["sql_task"]["file"] == {
         "path": "../maps/okta-group/apply.sql",
@@ -245,7 +245,7 @@ def test_apply_sql_defines_exact_map_table_contract() -> None:
     assert "can_read_jira_project" not in executable
 
 
-def test_customer_udf_has_single_array_input_and_resolves_session_identity() -> None:
+def test_okta_group_udf_has_single_array_input_and_resolves_session_identity() -> None:
     executable = normalized(read(APPLY))
 
     assert re.search(
@@ -267,7 +267,7 @@ def test_customer_udf_has_single_array_input_and_resolves_session_identity() -> 
     )
 
 
-def test_customer_udf_requires_matched_distinct_group_cardinality() -> None:
+def test_okta_group_udf_requires_matched_distinct_group_cardinality() -> None:
     executable = normalized(read(APPLY))
 
     matched = r"count\s*\(\s*distinct\s+(?:[a-z_]+\.)?okta_group_name\s*\)"
@@ -312,7 +312,7 @@ def test_filter_is_the_production_terraform_predicate_with_one_column_input() ->
     predicate = normalized(read(FILTER)).rstrip(";")
 
     assert predicate == (
-        "prod_security.policies.can_read_customer_okta_group(okta_group_names)"
+        "prod_security.policies.can_read_okta_group(okta_group_names)"
     )
     assert "identifier" not in predicate
     assert ":" not in predicate

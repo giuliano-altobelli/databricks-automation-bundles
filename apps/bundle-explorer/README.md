@@ -5,7 +5,7 @@ This dependency-free static application illustrates a collection-oriented ABAC b
 The default model is the proposed `platform-governance` layout with:
 
 - `abac-jira-access`: `project` and `issue`
-- `abac-customer-access`: `account` and `region`
+- `abac-general-access`: `account` and `region`
 
 The directory tree and canvas use the same model. Marking collections as modified updates the intended `changed_bundles` output and selective deployment matrix.
 

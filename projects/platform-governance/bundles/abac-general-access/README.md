@@ -1,9 +1,9 @@
-# ABAC Customer Access Collection
+# ABAC General Access Collection
 
-This live Databricks bundle is the deployment boundary for customer access
+This live Databricks bundle is the deployment boundary for general access
 maps. The collection currently owns one access map, `okta-group`, which
-manages the customer Okta-group access table and its fail-closed
-policy-supporting SQL UDF.
+manages the shared Okta-group access table and its fail-closed policy-supporting
+SQL UDF.
 
 The collection deploys the same target-agnostic SQL through three targets:
 isolated local development in the sandbox workspace, shared UAT in that
@@ -23,12 +23,12 @@ remains under `sql/`.
 
 The `okta-group` resource creates or updates only:
 
-- `dev`: `personal.<current-user-short-name>.customer_okta_group_access` and
-  `personal.<current-user-short-name>.can_read_customer_okta_group`
-- `uat`: `dev_security.access_maps.customer_okta_group_access` and
-  `dev_security.policies.can_read_customer_okta_group`
-- `prod`: `prod_security.access_maps.customer_okta_group_access` and
-  `prod_security.policies.can_read_customer_okta_group`
+- `dev`: `personal.<current-user-short-name>.okta_group_access` and
+  `personal.<current-user-short-name>.can_read_okta_group`
+- `uat`: `dev_security.access_maps.okta_group_access` and
+  `dev_security.policies.can_read_okta_group`
+- `prod`: `prod_security.access_maps.okta_group_access` and
+  `prod_security.policies.can_read_okta_group`
 
 The access map retains the Jira collection's grant lifecycle fields. Each row
 maps one effective principal to one Okta group. Only active, currently valid
@@ -62,7 +62,7 @@ the array is empty or every named group has a current qualifying grant for the
 session principal. A null array fails closed.
 
 `maps/okta-group/filter.sql` is a production-specific Terraform predicate
-contract for `prod_security.policies.can_read_customer_okta_group`. The
+contract for `prod_security.policies.can_read_okta_group`. The
 Databricks job never executes it; Terraform remains responsible for live
 attachment and rollout.
 

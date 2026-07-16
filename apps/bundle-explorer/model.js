@@ -10,7 +10,7 @@ export function defaults() {
         maps: ["project", "issue"],
       },
       {
-        name: "abac-customer-access",
+        name: "abac-general-access",
         changed: false,
         maps: ["account", "region"],
       },

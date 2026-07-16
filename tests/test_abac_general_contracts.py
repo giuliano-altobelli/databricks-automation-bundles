@@ -5,7 +5,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ROOT = (
-    ROOT / "projects" / "platform-governance" / "bundles" / "abac-customer-access"
+    ROOT / "projects" / "platform-governance" / "bundles" / "abac-general-access"
 )
 FIXTURE_ROOT = BUNDLE_ROOT / "maps" / "okta-group" / "fixtures"
 ACCESS_MAP_ROWS_FIXTURE = FIXTURE_ROOT / "rows.json"
@@ -65,7 +65,7 @@ def grants_group(
     return True
 
 
-def can_read_customer_okta_group(
+def can_read_okta_group(
     principal: str,
     okta_group_names: list[str] | None,
     rows: list[dict[str, Any]],
@@ -86,7 +86,7 @@ def can_read_customer_okta_group(
     return all(okta_group_name in granted for okta_group_name in okta_group_names)
 
 
-def test_customer_contract_fixture_cases_are_complete_and_well_formed() -> None:
+def test_general_contract_fixture_cases_are_complete_and_well_formed() -> None:
     cases = load_json(CONTRACT_CASES_FIXTURE)
     names = [case["name"] for case in cases]
 
@@ -95,13 +95,13 @@ def test_customer_contract_fixture_cases_are_complete_and_well_formed() -> None:
     assert REQUIRED_CASES <= set(names)
 
 
-def test_offline_can_read_customer_okta_group_contract_cases() -> None:
+def test_offline_can_read_okta_group_contract_cases() -> None:
     rows = load_json(ACCESS_MAP_ROWS_FIXTURE)
     cases = load_json(CONTRACT_CASES_FIXTURE)
 
     for case in cases:
         assert (
-            can_read_customer_okta_group(
+            can_read_okta_group(
                 case["principal"],
                 case["okta_group_names"],
                 rows,

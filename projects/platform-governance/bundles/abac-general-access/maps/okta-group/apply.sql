@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS IDENTIFIER(:access_map_table_fqn) (
   expires_at TIMESTAMP
 )
 USING DELTA
-COMMENT 'Enforcement index for current customer Okta-group access; not an approval ledger.'
+COMMENT 'Enforcement index for current Okta-group access; not an approval ledger.'
 TBLPROPERTIES ('delta.columnMapping.mode' = 'name');
 
 -- The session principal is resolved inside the security boundary. Null arrays

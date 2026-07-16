@@ -13,11 +13,11 @@ COLLECTIONS = {
         "target": "uat",
         "group": "abac-jira-access-uat",
     },
-    "deploy-customer-uat": {
-        "path": "projects/platform-governance/bundles/abac-customer-access",
+    "deploy-general-uat": {
+        "path": "projects/platform-governance/bundles/abac-general-access",
         "resource": "okta_group",
         "target": "uat",
-        "group": "abac-customer-access-uat",
+        "group": "abac-general-access-uat",
     },
 }
 CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"

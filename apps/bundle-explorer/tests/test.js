@@ -49,7 +49,7 @@ const cases = [
       const tree = page.getElementById("tree").textContent;
       assert(page.querySelectorAll("[data-collection]").length === 2, "Expected two collection rows");
       assert(tree.includes("abac-jira-access/"), "Expected the Jira collection");
-      assert(tree.includes("abac-customer-access/"), "Expected the customer collection");
+      assert(tree.includes("abac-general-access/"), "Expected the general collection");
       assert(tree.includes("project.yml"), "Expected the project resource");
       assert(tree.includes("issue.yml"), "Expected the issue resource");
       assert(tree.includes("account.yml"), "Expected the account resource");
@@ -101,9 +101,9 @@ const cases = [
       const output = page.getElementById("output").textContent;
       const deployments = page.getElementById("deployments").textContent;
       assert(!output.includes("abac-jira-access"), "Expected Jira to be excluded");
-      assert(output.includes("abac-customer-access"), "Expected customer to be selected");
+      assert(output.includes("abac-general-access"), "Expected general to be selected");
       assert(!deployments.includes("abac-jira-access"), "Expected no Jira deployment");
-      assert(deployments.includes("abac-customer-access"), "Expected a customer deployment");
+      assert(deployments.includes("abac-general-access"), "Expected a general deployment");
     },
   },
   {
