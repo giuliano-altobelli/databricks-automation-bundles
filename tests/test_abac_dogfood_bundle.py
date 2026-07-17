@@ -22,6 +22,8 @@ SQL_ROOT = BUNDLE_ROOT / "sql"
 MAP_ROOT = BUNDLE_ROOT / "maps" / "project"
 RESOURCE_ROOT = BUNDLE_ROOT / "resources"
 APPLY_SQL = MAP_ROOT / "apply.sql"
+SEED = MAP_ROOT / "project.json"
+UPDATE = MAP_ROOT / "update.py"
 PREFLIGHT_SQL = SQL_ROOT / "preflight.sql"
 JIRA_ROW_FILTER = MAP_ROOT / "filter.sql"
 NATIVE_DAB_CONFIG = BUNDLE_ROOT / "databricks.yml"
@@ -81,10 +83,18 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     config = load_metadata(NATIVE_DAB_CONFIG)
     resource = load_metadata(PROJECT_RESOURCE)
 
-    assert set(config) == {"bundle", "include", "variables", "targets"}
+    assert set(config) == {"bundle", "include", "sync", "variables", "targets"}
     assert config["bundle"]["name"] == "abac-jira-access"
     assert config["bundle"]["databricks_cli_version"] == ">= 1.7.0"
     assert config["include"] == ["resources/*.yml"]
+    assert config["sync"] == {
+        "include": [
+            "maps/project/project.json",
+            "maps/project/seed.py",
+            "maps/project/update.py",
+        ],
+        "exclude": ["maps/*/fixtures/"],
+    }
     assert set(config["variables"]) == EXPECTED_FQN_VARIABLES | {
         "sql_warehouse_id",
         "run_as_service_principal_name",
@@ -153,11 +163,18 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     job = resource["resources"]["jobs"]["project"]
     assert job["name"] == "apply_abac_jira_project_access"
     assert job["max_concurrent_runs"] == 1
-    assert len(job["tasks"]) == 2
+    assert job["environments"] == [
+        {
+            "environment_key": "seed",
+            "spec": {"environment_version": "2"},
+        }
+    ]
+    assert len(job["tasks"]) == 3
     tasks = {task["task_key"]: task for task in job["tasks"]}
     assert set(tasks) == {
         "preflight_target_schemas",
         "apply_abac_jira_project_access",
+        "update_abac_jira_project_access",
     }
 
     preflight_task = tasks["preflight_target_schemas"]
@@ -181,9 +198,19 @@ def test_abac_dogfood_native_bundle_is_live_and_target_driven() -> None:
     assert apply_task["sql_task"]["parameters"] == {
         name: f"${{var.{name}}}" for name in EXPECTED_APPLY_SQL_PARAMETERS
     }
+    update_task = tasks["update_abac_jira_project_access"]
+    assert update_task["depends_on"] == [
+        {"task_key": "apply_abac_jira_project_access"}
+    ]
+    assert update_task["environment_key"] == "seed"
+    assert update_task["spark_python_task"] == {
+        "python_file": "../maps/project/update.py",
+        "parameters": ["--table", "${var.access_map_table_fqn}"],
+    }
     assert all(
         task["sql_task"]["file"]["path"] != "../maps/project/filter.sql"
         for task in tasks.values()
+        if "sql_task" in task
     )
 
 
@@ -254,6 +281,8 @@ def test_abac_dogfood_sql_source_files_exist() -> None:
         "cases.json",
         "rows.json",
     }
+    assert SEED.is_file()
+    assert UPDATE.is_file()
 
 
 def test_abac_dogfood_access_map_ddl_matches_column_contract() -> None:

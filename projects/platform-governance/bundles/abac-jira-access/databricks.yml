@@ -5,6 +5,14 @@ bundle:
 include:
   - resources/*.yml
 
+sync:
+  include:
+    - maps/project/project.json
+    - maps/project/seed.py
+    - maps/project/update.py
+  exclude:
+    - maps/*/fixtures/
+
 variables:
   access_map_schema_fqn:
     description: Fully qualified schema containing the Jira project access map.

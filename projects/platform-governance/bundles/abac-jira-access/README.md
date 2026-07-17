@@ -14,9 +14,11 @@ sandbox, and production in the production workspace.
 It includes the independently runnable access-map jobs from `resources/*.yml`.
 
 The `project` resource in `resources/project.yml` runs a shared read-only
-schema preflight and then `maps/project/apply.sql`. Project-specific SQL and
-contract fixtures remain together under `maps/project/`; shared SQL remains
-under `sql/`.
+schema preflight, applies `maps/project/apply.sql`, and then runs the
+serverless `maps/project/update.py` task. The updater validates the
+authoritative `maps/project/project.json` seed before replacing the map.
+Project-specific code, SQL, seed data, and contract fixtures remain together
+under `maps/project/`; shared SQL remains under `sql/`.
 
 ## Live Resources
 
@@ -32,12 +34,45 @@ The `project` resource creates or updates only:
 The collection does not create catalogs or schemas, attach row filters, write
 Unity Catalog audit records, or manage Terraform-owned platform controls.
 
+## Authoritative Seed Contract
+
+`maps/project/project.json` is the only source allowed to populate the Jira
+project access map. Every deployment promotes the same reviewed snapshot to the
+selected target. Rows omitted from the seed are revoked by replacement; the
+access map is an enforcement index rather than a historical ledger.
+
+The seed must be a non-empty JSON array with the exact access-map columns. Each
+`effective_principal` and `project_key` pair must be unique. Required strings
+must be non-empty, timestamps must include a timezone, `expires_at` must be
+later than `valid_from`, and access levels are limited to `read` and
+`admin_view`. Validation completes before Spark receives any rows. Invalid,
+empty, or ambiguous input fails the job without writing to the Delta table.
+
+The serverless updater registers the validated, explicitly typed rows as a
+temporary view and issues one parameterized `INSERT OVERWRITE`. Delta commits
+that statement atomically: a query already in progress continues against its
+complete starting snapshot, while a query beginning after the commit uses the
+complete replacement. The job logs the seed row count and SHA-256 digest for
+run-to-source correlation.
+
+Repository validation derives the seed-to-table binding from the update task.
+For each target, one resolved mapping-table FQN may have only one seed path. The
+filename convention is `maps/<map>/<map>.json`; fixture JSON files are not
+synchronized and are not deployment seeds.
+
+The preceding SQL task can replace the policy UDF before the seed transaction
+runs. UDF changes must therefore remain compatible with both the previous and
+replacement snapshots during a rollout. The phase-one atomicity guarantee
+applies to the mapping-table replacement, not to a combined DDL and data
+transaction.
+
 ## SQL Execution Contract
 
 Targets pass complete fully qualified names into SQL task parameters. The
 project apply task receives `access_map_table_fqn` and `policy_udf_fqn`; every
 dynamic object reference is a single marker such as
-`IDENTIFIER(:access_map_table_fqn)`. Deployable SQL never constructs an object
+`IDENTIFIER(:access_map_table_fqn)`. The update task passes the same complete
+table FQN to `IDENTIFIER(:table)`. Deployable SQL never constructs an object
 name with string concatenation.
 
 Before apply, `sql/preflight.sql` uses `DESCRIBE SCHEMA` to check
