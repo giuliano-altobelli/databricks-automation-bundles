@@ -85,11 +85,28 @@ Databricks SQL / Databricks Runtime 18.0 or later parameter-marker semantics.
 Passing each FQN as one marker also avoids the identifier-expression
 concatenation deprecated in DBR 18.
 
+The policy UDF receives the protected row's `project_key` and resolves the
+effective principal internally with `session_user()`. Null project keys and
+missing or nonqualifying grants fail closed.
+
 `maps/project/filter.sql` is a production-specific Terraform predicate
 contract for `prod_security.policies.can_read_jira_project`. The Databricks job
 never executes it; Terraform remains responsible for live attachment and
-rollout. The predicate passes `session_user()` as the effective principal and
-does not use the deprecated `current_user()` alias.
+rollout. The predicate passes only the protected row's `project_key`.
+
+### One-Argument Signature Migration
+
+Changing the previous `(principal STRING, project_key STRING)` UDF to
+`(project_key STRING)` is a clean break. Databricks can replace a function only
+when its signature is unchanged. Before the first job run against a target that
+contains the previous UDF, Terraform must remove every policy or row filter
+that references it and an operator must drop the old function. Run the project
+job to create the one-argument function, then apply the Terraform predicate
+from `maps/project/filter.sql`. Fresh targets need no migration.
+
+The recurring bundle job intentionally does not drop the function. Databricks
+requires an attached row filter to be removed before its function is dropped;
+dropping the function first can make the protected table inaccessible.
 
 ## Local Development Workflow
 

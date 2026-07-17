@@ -307,16 +307,18 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
 
     assert re.search(POLICY_IDENTIFIER_PATTERN, udf, flags=re.IGNORECASE)
     assert re.search(
-        r"\(\s*principal\s+STRING\s*,\s*project_key\s+STRING\s*\)\s*"
-        r"RETURNS\s+BOOLEAN",
+        r"\(\s*project_key\s+STRING\s*\)\s*RETURNS\s+BOOLEAN",
         udf,
         flags=re.IGNORECASE,
     )
+    assert not re.search(r"\(\s*principal\s+STRING", udf, flags=re.IGNORECASE)
     assert re.search(ACCESS_MAP_IDENTIFIER_PATTERN, executable)
-    assert "effective_principal = principal" not in executable
+    assert "session_user()" in executable
+    assert "current_user()" not in executable
+    assert "requested_principal" not in executable
     assert "project_key = project_key" not in executable
     assert re.search(
-        r"access_map\.effective_principal\s*=\s*args\.requested_principal",
+        r"access_map\.effective_principal\s*=\s*session_user\(\)",
         executable,
     )
     assert re.search(
@@ -334,7 +336,6 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
         r"(?:[a-z_]+\.)?expires_at",
         executable,
     )
-    assert "principal is null" in executable
     assert "project_key is null" in executable
     assert "false" in executable
 
@@ -342,10 +343,10 @@ def test_abac_dogfood_udf_source_matches_decision_contract() -> None:
 def test_abac_dogfood_policy_fragment_calls_udf() -> None:
     policy = normalized_sql(strip_sql_line_comments(load_sql(JIRA_ROW_FILTER)))
 
-    assert (
-        "prod_security.policies.can_read_jira_project(session_user(), project_key)"
-        in policy
+    assert policy.strip() == (
+        "prod_security.policies.can_read_jira_project(project_key)"
     )
+    assert "session_user()" not in policy
     assert "current_user()" not in policy
     assert "identifier" not in policy
     assert ":" not in policy
@@ -411,6 +412,7 @@ def test_abac_dogfood_apply_sql_has_one_copy_of_each_deployable_statement() -> N
 
     assert len(re.findall(r"\bcreate table if not exists\b", executable)) == 1
     assert len(re.findall(r"\bcreate or replace function\b", executable)) == 1
+    assert "drop function" not in executable
     assert sum(line.rstrip().endswith(";") for line in apply_sql.splitlines()) == 2
     assert "Databricks notebook source" not in apply_sql
     assert "COMMAND ----------" not in apply_sql
