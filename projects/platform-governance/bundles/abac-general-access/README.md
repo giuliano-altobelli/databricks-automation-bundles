@@ -1,111 +1,53 @@
 # ABAC General Access Collection
 
-This live Databricks bundle is the deployment boundary for general access
-maps. The collection currently owns one access map, `okta-group`, which
-manages the shared Okta-group access table and its fail-closed policy-supporting
-SQL UDF.
+This Databricks Asset Bundle deploys the SQL policy function used to authorize
+rows tagged with required Okta account groups. Okta provisions the groups and
+their users to Databricks through SCIM, so the bundle does not maintain a
+separate access-map table or seed.
 
-The collection deploys the same target-agnostic SQL through three targets:
-isolated local development in the sandbox workspace, shared UAT in that
-sandbox, and production in the production workspace.
+## Deployment
 
-## Collection Layout
+The `okta_group` job first verifies the destination policy schema and then
+creates or replaces `maps/okta-group/apply.sql` on a serverless SQL warehouse.
+It creates or updates only one function per target:
 
-`databricks.yml` owns the collection identity, shared variables, and targets.
-It includes the independently runnable access-map jobs from `resources/*.yml`.
+- `dev`: `personal.<current-user-short-name>.can_read_okta_group`
+- `uat`: `dev_security.policies.can_read_okta_group`
+- `prod`: `prod_security.policies.can_read_okta_group`
 
-The `okta-group` resource in `resources/okta-group.yml` runs a shared read-only
-schema preflight, applies `maps/okta-group/apply.sql`, and then runs the
-serverless `maps/okta-group/update.py` task. The updater validates the
-authoritative `maps/okta-group/okta-group.json` seed before replacing the map.
-Okta-group-specific code, SQL, seed data, and contract fixtures remain together
-under `maps/okta-group/`; shared SQL remains under `sql/`.
+The bundle does not create catalogs, schemas, mapping tables, or seed data. It
+also does not attach row filters or manage the Terraform-owned production
+policy rollout.
 
-## Live Resources
+Targets pass the complete function name through `policy_udf_fqn` and the apply
+SQL references it with `IDENTIFIER(:policy_udf_fqn)`. The read-only preflight
+uses `policy_schema_fqn`. Both tasks use the existing warehouse passed through
+`sql_warehouse_id`.
 
-The `okta-group` resource creates or updates only:
+## Policy Contract
 
-- `dev`: `personal.<current-user-short-name>.okta_group_access` and
-  `personal.<current-user-short-name>.can_read_okta_group`
-- `uat`: `dev_security.access_maps.okta_group_access` and
-  `dev_security.policies.can_read_okta_group`
-- `prod`: `prod_security.access_maps.okta_group_access` and
-  `prod_security.policies.can_read_okta_group`
+The policy UDF receives the protected row's `okta_group_names` array. Every
+non-null group name must identify an account-level group containing the
+connected user according to `is_account_group_member`. This includes indirect
+membership resolved by Unity Catalog.
 
-The access map retains the Jira collection's grant lifecycle fields. Each row
-maps one effective principal to one Okta group. Only active, currently valid
-`read` and `admin_view` grants contribute to access.
+A null array or null array element fails closed. An empty array returns true,
+so rows without an Okta-group restriction remain visible. Group membership is
+evaluated from the Databricks identity synchronized by SCIM rather than from a
+bundle-owned authorization snapshot.
 
-The collection does not create catalogs or schemas, attach row filters, write
-Unity Catalog audit records, or manage Terraform-owned platform controls.
+`maps/okta-group/filter.sql` is the production Terraform predicate contract:
 
-## Authoritative Seed Contract
+```sql
+prod_security.policies.can_read_okta_group(okta_group_names)
+```
 
-`maps/okta-group/okta-group.json` is the only source allowed to populate the
-Okta-group access map. Every deployment promotes the same reviewed snapshot to
-the selected target. Rows omitted from the seed are revoked by replacement;
-the access map is an enforcement index rather than a historical ledger.
+The Databricks job never executes this file.
 
-The seed must be a non-empty JSON array with the exact access-map columns. Each
-`effective_principal` and `okta_group_name` pair must be unique. Required
-strings must be non-empty, timestamps must include a timezone, `expires_at`
-must be later than `valid_from`, and access levels are limited to `read` and
-`admin_view`. Validation completes before Spark receives any rows. Invalid,
-empty, or ambiguous input fails the job without writing to the Delta table.
+## Local Development
 
-The serverless updater registers the validated, explicitly typed rows as a
-temporary view and issues one parameterized `INSERT OVERWRITE`. Delta commits
-that statement atomically: a query already in progress continues against its
-complete starting snapshot, while a query beginning after the commit uses the
-complete replacement. The job logs the seed row count and SHA-256 digest for
-run-to-source correlation.
-
-Repository validation derives the seed-to-table binding from the update task.
-For each target, one resolved mapping-table FQN may have only one seed path.
-The filename convention is `maps/<map>/<map>.json`; fixture JSON files are not
-synchronized and are not deployment seeds.
-
-The preceding SQL task can replace the policy UDF before the seed transaction
-runs. UDF changes must therefore remain compatible with both the previous and
-replacement snapshots during a rollout. The phase-one atomicity guarantee
-applies to the mapping-table replacement, not to a combined DDL and data
-transaction.
-
-## SQL Execution Contract
-
-Targets pass complete fully qualified names into SQL task parameters. The
-Okta-group apply task receives `access_map_table_fqn` and `policy_udf_fqn`;
-every dynamic object reference is a single marker such as
-`IDENTIFIER(:access_map_table_fqn)`. The update task passes the same complete
-table FQN to `IDENTIFIER(:table)`. Deployable SQL never constructs an object
-name with string concatenation.
-
-Before apply, `sql/preflight.sql` uses `DESCRIBE SCHEMA` to check
-`access_map_schema_fqn` and `policy_schema_fqn`. This task is read-only and must
-succeed before any DDL runs. The warehouse is verified implicitly when the
-preflight task starts, so the SQL does not attempt a separate warehouse check.
-
-The SQL file task is intended for a serverless SQL warehouse and follows
-Databricks SQL / Databricks Runtime 18.0 or later parameter-marker semantics.
-Passing each FQN as one marker also avoids the identifier-expression
-concatenation deprecated in DBR 18.
-
-The policy UDF receives the protected row's `okta_group_names` array and
-resolves the principal internally with `session_user()`. A row is visible when
-the array is empty or every named group has a current qualifying grant for the
-session principal. A null array fails closed.
-
-`maps/okta-group/filter.sql` is a production-specific Terraform predicate
-contract for `prod_security.policies.can_read_okta_group`. The
-Databricks job never executes it; Terraform remains responsible for live
-attachment and rollout.
-
-## Local Development Workflow
-
-The `dev` target is local-only. Use an attended Databricks CLI profile for the
-sandbox workspace. OAuth U2M is preferred; a personal access token remains a
-local-only fallback. Supply the existing sandbox warehouse ID without
-committing it:
+Use an attended Databricks CLI profile for the sandbox workspace and provide
+the existing serverless SQL warehouse without committing it:
 
 ```bash
 export BUNDLE_VAR_sql_warehouse_id="<sandbox-sql-warehouse-id>"
@@ -115,28 +57,17 @@ databricks bundle deploy -t dev -p sandbox-infra
 databricks bundle run -t dev -p sandbox-infra okta_group
 ```
 
-Development-mode deployments and the Okta-group job use the authenticated
-developer's identity. The collection resolves both schemas from
-`${workspace.current_user.short_name}`, keeping every developer's table and UDF
-inside their own `personal` catalog schema. CI must not deploy the `dev` target.
+The `dev` target uses the authenticated developer and writes the UDF to that
+developer's `personal` schema. CI must not deploy this target.
 
 ## CI Authentication
 
-Pull-request CI deploys `uat` when this collection is reported as changed.
-Main-branch CI deploys `prod` after repository verification. Both workflows use
-OAuth M2M. Each target-specific GitHub environment provides these variables:
-
-- variables `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
-  `DATABRICKS_SQL_WAREHOUSE_ID`
+Pull-request CI deploys `uat`; main-branch CI deploys `prod` after repository
+verification. Both use OAuth M2M. Each target-specific GitHub environment
+provides `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
+`DATABRICKS_SQL_WAREHOUSE_ID`.
 
 The caller repository provides `DATABRICKS_UAT_CLIENT_SECRET` and
-`DATABRICKS_PROD_CLIENT_SECRET` as repository secrets. Each deployment caller
-passes only its target credential to the reusable workflow, which maps it to
-`DATABRICKS_CLIENT_SECRET` for the Databricks CLI. This explicit mapping avoids
-GitHub's reusable-workflow limitation for environment secrets. Each caller
-repository must define matching `uat` and `prod` environments and both
-repository secrets.
-
-For `uat` and `prod`, the authenticated deployment service principal is also
-passed as `BUNDLE_VAR_run_as_service_principal_name`. This gives each shared
-job and its SQL-created objects one stable run identity and deployment root.
+`DATABRICKS_PROD_CLIENT_SECRET` as repository secrets. The deployment service
+principal is also passed as `BUNDLE_VAR_run_as_service_principal_name`, giving
+shared jobs and SQL-created objects a stable run identity and deployment root.
