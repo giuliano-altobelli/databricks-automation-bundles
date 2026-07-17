@@ -20,6 +20,7 @@ MAP = (
     / "maps"
     / "okta-group"
 )
+UPDATE = MAP / "update.py"
 
 
 def load(name: str, path: Path) -> ModuleType:
@@ -51,7 +52,7 @@ def seed() -> ModuleType:
 @pytest.fixture
 def update(seed: ModuleType, monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.setitem(sys.modules, "seed", seed)
-    return load("okta_group_update", MAP / "update.py")
+    return load("okta_group_update", UPDATE)
 
 
 def write(path: Path, payload: object) -> bytes:
@@ -294,7 +295,20 @@ def test_update_performs_one_parameterized_authoritative_overwrite(
 
 
 def test_update_derives_seed_from_its_map_directory(update: ModuleType) -> None:
-    assert update.source(MAP / "update.py") == MAP / "okta-group.json"
+    assert update.source(MAP) == MAP / "okta-group.json"
+
+
+def test_update_loads_without_file_global(
+    seed: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "seed", seed)
+    monkeypatch.chdir(MAP)
+    scope: dict[str, Any] = {"__name__": "okta_group_update_runtime"}
+
+    exec(compile(UPDATE.read_bytes(), str(UPDATE), "exec"), scope)
+
+    assert scope["source"](Path.cwd()) == MAP / "okta-group.json"
 
 
 def test_update_rejects_invalid_seed_before_spark_interaction(

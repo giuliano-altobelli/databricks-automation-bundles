@@ -52,8 +52,7 @@ def execute(session: Session, table: str, path: Path) -> Snapshot:
     return snapshot
 
 
-def source(script: Path = Path(__file__)) -> Path:
-    directory = script.resolve().parent
+def source(directory: Path) -> Path:
     return directory / f"{directory.name}.json"
 
 
@@ -64,7 +63,7 @@ def main() -> None:
 
     from pyspark.sql import SparkSession
 
-    execute(SparkSession.builder.getOrCreate(), arguments.table, source())
+    execute(SparkSession.builder.getOrCreate(), arguments.table, source(Path.cwd()))
 
 
 if __name__ == "__main__":
