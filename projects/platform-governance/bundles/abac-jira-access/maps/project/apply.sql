@@ -13,27 +13,24 @@ USING DELTA
 COMMENT 'Enforcement index for current Jira project access; not an approval ledger.'
 TBLPROPERTIES ('delta.columnMapping.mode' = 'name');
 
--- The predicate aliases UDF inputs before joining to the access map so
--- column checks remain unambiguous. Null inputs and missing, inactive,
--- unsupported, not-yet-valid, or expired grants all fail closed.
+-- The session principal is resolved inside the security boundary. The project
+-- key is aliased before joining so column checks remain unambiguous. Null keys
+-- and missing, inactive, unsupported, not-yet-valid, or expired grants fail closed.
 CREATE OR REPLACE FUNCTION IDENTIFIER(:policy_udf_fqn) (
-  principal STRING,
   project_key STRING
 )
 RETURNS BOOLEAN
 RETURN
   CASE
-    WHEN principal IS NULL OR project_key IS NULL THEN false
+    WHEN project_key IS NULL THEN false
     ELSE EXISTS (
       WITH args AS (
-        SELECT
-          principal AS requested_principal,
-          project_key AS requested_project_key
+        SELECT project_key AS requested_project_key
       )
       SELECT 1
       FROM IDENTIFIER(:access_map_table_fqn) AS access_map
       CROSS JOIN args
-      WHERE access_map.effective_principal = args.requested_principal
+      WHERE access_map.effective_principal = session_user()
         AND access_map.project_key = args.requested_project_key
         AND access_map.is_active = true
         AND access_map.access_level IN ('read', 'admin_view')

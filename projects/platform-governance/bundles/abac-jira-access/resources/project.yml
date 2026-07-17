@@ -24,3 +24,16 @@ resources:
             parameters:
               access_map_table_fqn: ${var.access_map_table_fqn}
               policy_udf_fqn: ${var.policy_udf_fqn}
+        - task_key: update_abac_jira_project_access
+          depends_on:
+            - task_key: apply_abac_jira_project_access
+          spark_python_task:
+            python_file: ../maps/project/update.py
+            parameters:
+              - --table
+              - ${var.access_map_table_fqn}
+          environment_key: seed
+      environments:
+        - environment_key: seed
+          spec:
+            environment_version: "2"
