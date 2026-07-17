@@ -16,19 +16,9 @@ CONFIGURATION = BUNDLE / "databricks.yml"
 PREFLIGHT = BUNDLE / "sql" / "preflight.sql"
 APPLY = MAP / "apply.sql"
 FILTER = MAP / "filter.sql"
-SEED = MAP / "okta-group.json"
-UPDATE = MAP / "update.py"
 
-APPLY_PARAMETERS = {"access_map_table_fqn", "policy_udf_fqn"}
-PREFLIGHT_PARAMETERS = {"access_map_schema_fqn", "policy_schema_fqn"}
-TABLE_COLUMNS = {
-    "effective_principal": ("STRING", "NOT NULL"),
-    "okta_group_name": ("STRING", "NOT NULL"),
-    "access_level": ("STRING", "NOT NULL"),
-    "is_active": ("BOOLEAN", "NOT NULL"),
-    "valid_from": ("TIMESTAMP", "NOT NULL"),
-    "expires_at": ("TIMESTAMP", "NULL"),
-}
+APPLY_PARAMETERS = {"policy_udf_fqn"}
+PREFLIGHT_PARAMETERS = {"policy_schema_fqn"}
 
 
 def read(path: Path) -> str:
@@ -41,35 +31,6 @@ def uncommented(sql: str) -> str:
 
 def normalized(sql: str) -> str:
     return re.sub(r"\s+", " ", uncommented(sql)).strip().lower()
-
-
-def columns(sql: str) -> dict[str, tuple[str, str]]:
-    match = re.search(
-        r"create\s+table\s+if\s+not\s+exists\s+"
-        r"identifier\s*\(\s*:access_map_table_fqn\s*\)\s*"
-        r"\((?P<columns>.*?)\)\s*using\s+delta",
-        sql,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    assert match is not None
-
-    result = {}
-    for raw in match.group("columns").splitlines():
-        line = raw.strip().rstrip(",")
-        if not line:
-            continue
-        column = re.fullmatch(
-            r"(?P<name>[a-z_]+)\s+(?P<type>STRING|BOOLEAN|TIMESTAMP)"
-            r"(?:\s+(?P<required>NOT\s+NULL))?",
-            line,
-            flags=re.IGNORECASE,
-        )
-        assert column is not None, line
-        result[column.group("name").lower()] = (
-            column.group("type").upper(),
-            "NOT NULL" if column.group("required") else "NULL",
-        )
-    return result
 
 
 def test_repoctl_discovers_and_classifies_general_collection() -> None:
@@ -86,7 +47,7 @@ def test_repoctl_discovers_and_classifies_general_collection() -> None:
         "prod": {"mode": "production", "ci_only": True},
     }
 
-    for path in (APPLY, SEED):
+    for path in (APPLY, FILTER):
         changed = classify_changed_files(ROOT, [path.relative_to(ROOT).as_posix()])
         assert changed.docs_only is False
         assert changed.affects_all_bundles is False
@@ -96,18 +57,10 @@ def test_repoctl_discovers_and_classifies_general_collection() -> None:
 def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
     configuration = load_metadata(CONFIGURATION)
 
-    assert set(configuration) == {"bundle", "include", "sync", "variables", "targets"}
+    assert set(configuration) == {"bundle", "include", "variables", "targets"}
     assert configuration["bundle"]["name"] == "abac-general-access"
     assert configuration["bundle"]["databricks_cli_version"] == ">= 1.7.0"
     assert configuration["include"] == ["resources/*.yml"]
-    assert configuration["sync"] == {
-        "include": [
-            "maps/okta-group/okta-group.json",
-            "maps/okta-group/seed.py",
-            "maps/okta-group/update.py",
-        ],
-        "exclude": ["maps/*/fixtures/"],
-    }
     assert set(configuration["variables"]) == (
         APPLY_PARAMETERS
         | PREFLIGHT_PARAMETERS
@@ -117,11 +70,6 @@ def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
 
     destinations = {
         "dev": {
-            "access_map_schema_fqn": "personal.${workspace.current_user.short_name}",
-            "access_map_table_fqn": (
-                "personal.${workspace.current_user.short_name}."
-                "okta_group_access"
-            ),
             "policy_schema_fqn": "personal.${workspace.current_user.short_name}",
             "policy_udf_fqn": (
                 "personal.${workspace.current_user.short_name}."
@@ -129,18 +77,10 @@ def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
             ),
         },
         "uat": {
-            "access_map_schema_fqn": "dev_security.access_maps",
-            "access_map_table_fqn": (
-                "dev_security.access_maps.okta_group_access"
-            ),
             "policy_schema_fqn": "dev_security.policies",
             "policy_udf_fqn": "dev_security.policies.can_read_okta_group",
         },
         "prod": {
-            "access_map_schema_fqn": "prod_security.access_maps",
-            "access_map_table_fqn": (
-                "prod_security.access_maps.okta_group_access"
-            ),
             "policy_schema_fqn": "prod_security.policies",
             "policy_udf_fqn": "prod_security.policies.can_read_okta_group",
         },
@@ -167,7 +107,7 @@ def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
         )
 
 
-def test_okta_group_resource_runs_preflight_apply_and_update() -> None:
+def test_okta_group_resource_runs_preflight_and_apply() -> None:
     assert {path.name for path in (BUNDLE / "resources").glob("*.yml")} == {
         "okta-group.yml"
     }
@@ -175,47 +115,39 @@ def test_okta_group_resource_runs_preflight_apply_and_update() -> None:
     assert {path.name for path in (BUNDLE / "sql").glob("*.sql")} == {
         "preflight.sql"
     }
-    assert {path.name for path in MAP.glob("*.sql")} == {"apply.sql", "filter.sql"}
-    assert SEED.is_file()
-    assert UPDATE.is_file()
-    assert {path.name for path in (MAP / "fixtures").glob("*.json")} == {
-        "cases.json",
-        "rows.json",
+    assert {path.name for path in MAP.iterdir() if path.is_file()} == {
+        "apply.sql",
+        "filter.sql",
     }
+    assert not (MAP / "fixtures").exists()
 
     resource = load_metadata(RESOURCE)
     jobs = resource["resources"]["jobs"]
     assert set(jobs) == {"okta_group"}
     job = jobs["okta_group"]
-    assert job["name"] == "apply_abac_okta_group_access"
+    assert job["name"] == "apply_abac_okta_group_policy"
     assert job["max_concurrent_runs"] == 1
-    assert job["environments"] == [
-        {
-            "environment_key": "seed",
-            "spec": {"environment_version": "2"},
-        }
-    ]
+    assert "environments" not in job
 
     tasks = {task["task_key"]: task for task in job["tasks"]}
     assert set(tasks) == {
-        "preflight_target_schemas",
-        "apply_abac_okta_group_access",
-        "update_abac_okta_group_access",
+        "preflight",
+        "apply",
     }
-    assert "depends_on" not in tasks["preflight_target_schemas"]
-    assert tasks["preflight_target_schemas"]["sql_task"]["file"] == {
+    assert "depends_on" not in tasks["preflight"]
+    assert tasks["preflight"]["sql_task"]["file"] == {
         "path": "../sql/preflight.sql",
         "source": "WORKSPACE",
     }
-    assert tasks["preflight_target_schemas"]["sql_task"]["warehouse_id"] == (
+    assert tasks["preflight"]["sql_task"]["warehouse_id"] == (
         "${var.sql_warehouse_id}"
     )
-    assert tasks["preflight_target_schemas"]["sql_task"]["parameters"] == {
+    assert tasks["preflight"]["sql_task"]["parameters"] == {
         name: f"${{var.{name}}}" for name in PREFLIGHT_PARAMETERS
     }
 
-    application = tasks["apply_abac_okta_group_access"]
-    assert application["depends_on"] == [{"task_key": "preflight_target_schemas"}]
+    application = tasks["apply"]
+    assert application["depends_on"] == [{"task_key": "preflight"}]
     assert application["sql_task"]["file"] == {
         "path": "../maps/okta-group/apply.sql",
         "source": "WORKSPACE",
@@ -225,13 +157,6 @@ def test_okta_group_resource_runs_preflight_apply_and_update() -> None:
         name: f"${{var.{name}}}" for name in APPLY_PARAMETERS
     }
 
-    update = tasks["update_abac_okta_group_access"]
-    assert update["depends_on"] == [{"task_key": "apply_abac_okta_group_access"}]
-    assert update["environment_key"] == "seed"
-    assert update["spark_python_task"] == {
-        "python_file": "../maps/okta-group/update.py",
-        "parameters": ["--table", "${var.access_map_table_fqn}"],
-    }
     sql = {
         task["sql_task"]["file"]["path"]
         for task in tasks.values()
@@ -240,13 +165,13 @@ def test_okta_group_resource_runs_preflight_apply_and_update() -> None:
     assert "../maps/okta-group/filter.sql" not in sql
 
 
-def test_preflight_is_read_only_and_checks_both_target_schemas() -> None:
+def test_preflight_is_read_only_and_checks_policy_schema() -> None:
     sql = read(PREFLIGHT)
     executable = normalized(sql)
 
     assert set(re.findall(r":([a-z_]+)", uncommented(sql))) == PREFLIGHT_PARAMETERS
-    assert len(re.findall(r"\bdescribe\s+schema\s+identifier\b", executable)) == 2
-    assert sum(line.rstrip().endswith(";") for line in sql.splitlines()) == 2
+    assert len(re.findall(r"\bdescribe\s+schema\s+identifier\b", executable)) == 1
+    assert sum(line.rstrip().endswith(";") for line in sql.splitlines()) == 1
     for keyword in (
         "alter",
         "create",
@@ -261,19 +186,17 @@ def test_preflight_is_read_only_and_checks_both_target_schemas() -> None:
         assert not re.search(rf"\b{keyword}\b", executable)
 
 
-def test_apply_sql_defines_exact_map_table_contract() -> None:
+def test_apply_sql_defines_only_policy_udf() -> None:
     sql = read(APPLY)
     executable = normalized(sql)
 
-    assert columns(sql) == TABLE_COLUMNS
     assert set(re.findall(r":([a-z_]+)", uncommented(sql))) == APPLY_PARAMETERS
-    assert len(re.findall(r"\bcreate\s+table\s+if\s+not\s+exists\b", executable)) == 1
     assert len(re.findall(r"\bcreate\s+or\s+replace\s+function\b", executable)) == 1
-    assert "jira_project_access" not in executable
-    assert "can_read_jira_project" not in executable
+    assert not re.search(r"\bcreate\s+table\b", executable)
+    assert "access_map" not in executable
 
 
-def test_okta_group_udf_has_single_array_input_and_resolves_session_identity() -> None:
+def test_okta_group_udf_requires_every_scim_account_group_and_fails_closed() -> None:
     executable = normalized(read(APPLY))
 
     assert re.search(
@@ -283,55 +206,21 @@ def test_okta_group_udf_has_single_array_input_and_resolves_session_identity() -
         r"returns\s+boolean",
         executable,
     )
-    assert "session_user()" in executable
+    assert "session_user()" not in executable
     assert "current_user()" not in executable
     assert re.search(
-        r"when\s+okta_group_names\s+is\s+null\s+then\s+false", executable
-    )
-    assert re.search(
-        r"when\s+array_size\s*\(\s*okta_group_names\s*\)\s*=\s*0\s+"
-        r"then\s+true",
-        executable,
-    )
-
-
-def test_okta_group_udf_requires_matched_distinct_group_cardinality() -> None:
-    executable = normalized(read(APPLY))
-
-    matched = r"count\s*\(\s*distinct\s+(?:[a-z_]+\.)?okta_group_name\s*\)"
-    required = (
-        r"array_size\s*\(\s*(?:[a-z_]+\.)?"
-        r"(?:requested_)?okta_group_names\s*\)"
-    )
-    assert re.search(rf"{matched}\s*=\s*{required}", executable)
-    assert re.search(
-        r"array_contains\s*\(\s*(?:[a-z_]+\.)?"
-        r"(?:requested_)?okta_group_names\s*,\s*"
-        r"(?:[a-z_]+\.)?okta_group_name\s*\)",
+        r"return\s+coalesce\s*\(\s*forall\s*\(\s*okta_group_names\s*,",
         executable,
     )
     assert re.search(
-        r"(?:[a-z_]+\.)?effective_principal\s*=\s*session_user\s*\(\s*\)",
-        executable,
-    )
-    assert re.search(r"(?:[a-z_]+\.)?is_active\s*=\s*true", executable)
-
-    levels = re.search(
-        r"(?:[a-z_]+\.)?access_level\s+in\s*\((?P<levels>[^)]+)\)",
-        executable,
-    )
-    assert levels is not None
-    assert re.findall(r"'([^']+)'", levels.group("levels")) == [
-        "read",
-        "admin_view",
-    ]
-    assert re.search(
-        r"(?:[a-z_]+\.)?valid_from\s*<=\s*current_timestamp\s*\(\s*\)",
+        r"okta_group_name\s*->\s*case\s+when\s+okta_group_name\s+is\s+null\s+"
+        r"then\s+false\s+else\s+"
+        r"is_account_group_member\s*\(\s*okta_group_name\s*\)\s+end",
         executable,
     )
     assert re.search(
-        r"(?:[a-z_]+\.)?expires_at\s+is\s+null\s+or\s+"
-        r"current_timestamp\s*\(\s*\)\s*<\s*(?:[a-z_]+\.)?expires_at",
+        r"is_account_group_member\s*\(\s*okta_group_name\s*\)\s+end\s*\)\s*,\s*"
+        r"false\s*\)\s*;?$",
         executable,
     )
 
@@ -346,11 +235,13 @@ def test_filter_is_the_production_terraform_predicate_with_one_column_input() ->
     assert ":" not in predicate
 
 
-def test_sql_tasks_do_not_attach_filters_or_populate_the_mapping_table() -> None:
+def test_sql_tasks_do_not_attach_filters_or_manage_access_maps() -> None:
     executable = normalized(read(APPLY) + "\n" + read(PREFLIGHT))
 
     for statement in (
         r"\balter\s+table\b",
+        r"\bcreate\s+table\b",
+        r"\bdrop\s+table\b",
         r"\bset\s+row\s+filter\b",
         r"\binsert\s+into\b",
         r"\bmerge\s+into\b",

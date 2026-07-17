@@ -1,39 +1,24 @@
 resources:
   jobs:
     okta_group:
-      name: apply_abac_okta_group_access
+      name: apply_abac_okta_group_policy
       max_concurrent_runs: 1
       tasks:
-        - task_key: preflight_target_schemas
+        - task_key: preflight
           sql_task:
             file:
               path: ../sql/preflight.sql
               source: WORKSPACE
             warehouse_id: ${var.sql_warehouse_id}
             parameters:
-              access_map_schema_fqn: ${var.access_map_schema_fqn}
               policy_schema_fqn: ${var.policy_schema_fqn}
-        - task_key: apply_abac_okta_group_access
+        - task_key: apply
           depends_on:
-            - task_key: preflight_target_schemas
+            - task_key: preflight
           sql_task:
             file:
               path: ../maps/okta-group/apply.sql
               source: WORKSPACE
             warehouse_id: ${var.sql_warehouse_id}
             parameters:
-              access_map_table_fqn: ${var.access_map_table_fqn}
               policy_udf_fqn: ${var.policy_udf_fqn}
-        - task_key: update_abac_okta_group_access
-          depends_on:
-            - task_key: apply_abac_okta_group_access
-          spark_python_task:
-            python_file: ../maps/okta-group/update.py
-            parameters:
-              - --table
-              - ${var.access_map_table_fqn}
-          environment_key: seed
-      environments:
-        - environment_key: seed
-          spec:
-            environment_version: "2"
