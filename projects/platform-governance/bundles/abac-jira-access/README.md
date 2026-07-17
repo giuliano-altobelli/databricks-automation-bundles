@@ -88,7 +88,8 @@ concatenation deprecated in DBR 18.
 `maps/project/filter.sql` is a production-specific Terraform predicate
 contract for `prod_security.policies.can_read_jira_project`. The Databricks job
 never executes it; Terraform remains responsible for live attachment and
-rollout.
+rollout. The predicate passes `session_user()` as the effective principal and
+does not use the deprecated `current_user()` alias.
 
 ## Local Development Workflow
 

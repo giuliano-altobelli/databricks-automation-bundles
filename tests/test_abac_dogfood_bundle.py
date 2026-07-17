@@ -343,9 +343,10 @@ def test_abac_dogfood_policy_fragment_calls_udf() -> None:
     policy = normalized_sql(strip_sql_line_comments(load_sql(JIRA_ROW_FILTER)))
 
     assert (
-        "prod_security.policies.can_read_jira_project(current_user(), project_key)"
+        "prod_security.policies.can_read_jira_project(session_user(), project_key)"
         in policy
     )
+    assert "current_user()" not in policy
     assert "identifier" not in policy
     assert ":" not in policy
 
