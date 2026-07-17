@@ -9,6 +9,7 @@ from repoctl.discovery import Bundle
 from repoctl.metadata import load_metadata
 
 VARIABLE = re.compile(r"^\$\{var\.([a-z_][a-z0-9_]*)\}$")
+DELIMITED = re.compile(r"(^|\.)`([A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*)`(?=\.|$)")
 TARGETS = ("dev", "uat", "prod")
 
 
@@ -37,7 +38,7 @@ def check(root: Path, bundles: list[Bundle]) -> list[str]:
     owners: dict[tuple[str, str], Binding] = {}
     for binding in bindings:
         for destination in binding.destinations:
-            key = (destination.target, destination.table.casefold())
+            key = (destination.target, _canonical(destination.table))
             owner = owners.get(key)
             if owner is None:
                 owners[key] = binding
@@ -78,7 +79,7 @@ def _bundle(root: Path, bundle: Bundle) -> tuple[list[Binding], list[str]]:
 
 
 def _enabled(directory: Path) -> bool:
-    return (directory / "update.py").exists() or any(directory.glob("*.json"))
+    return (directory / "update.py").exists() or bool(_seeds(directory))
 
 
 def _binding(
@@ -91,7 +92,7 @@ def _binding(
     path = directory / f"{directory.name}.json"
     if not path.is_file():
         errors.append(f"{_display(root, path)} is required")
-    for candidate in sorted(directory.glob("*.json")):
+    for candidate in _seeds(directory):
         if candidate == path:
             continue
         errors.append(
@@ -102,26 +103,27 @@ def _binding(
     updater = directory / "update.py"
     if not updater.is_file():
         errors.append(f"{_display(root, updater)} is required")
-    variables = _variables(bundle.path, updater)
+    documents = _documents(bundle.path, configuration)
+    variables = _variables(updater, documents)
     variable = variables[0] if len(variables) == 1 else None
     if variable is None:
         errors.append(f"{_display(root, path)} must bind to exactly one table")
         return None, errors
 
-    declarations = configuration.get("variables")
-    if not isinstance(declarations, dict) or variable not in declarations:
+    if not _declared(documents, variable):
         errors.append(
             f"{_display(root, path)} references undeclared table variable {variable}"
         )
         return None, errors
 
-    targets = configuration.get("targets")
     destinations: list[Destination] = []
     for target in TARGETS:
-        settings = targets.get(target) if isinstance(targets, dict) else None
-        values = settings.get("variables") if isinstance(settings, dict) else None
-        table = values.get(variable) if isinstance(values, dict) else None
-        if not isinstance(table, str) or not table.strip():
+        table = _value(documents, target, variable)
+        if (
+            not isinstance(table, str)
+            or not table
+            or any(character.isspace() for character in table)
+        ):
             errors.append(
                 f"{_display(root, path)} {target} must resolve table variable {variable}"
             )
@@ -133,40 +135,123 @@ def _binding(
     return Binding(path=path, destinations=tuple(destinations)), []
 
 
-def _variables(bundle: Path, updater: Path) -> list[str | None]:
-    resources = bundle / "resources"
-    if not resources.is_dir():
-        return []
-
+def _variables(
+    updater: Path,
+    documents: list[tuple[Path, dict[str, Any]]],
+) -> list[str | None]:
     variables: list[str | None] = []
-    for path in sorted(resources.glob("*.yml")):
-        metadata = load_metadata(path)
-        for task in _tasks(metadata):
-            python = task.get("spark_python_task")
-            if not isinstance(python, dict):
+    identities: set[tuple[str, str]] = set()
+    for path, metadata in documents:
+        for job, task, nested in _tasks(metadata):
+            python = _python(path, task, updater)
+            if python is None:
                 continue
-            source = python.get("python_file")
-            if not isinstance(source, str):
+            variables.append(None if nested else _variable(python.get("parameters")))
+            key = task.get("task_key")
+            if isinstance(key, str):
+                identities.add((job, key))
+
+    for path, metadata in documents:
+        targets = metadata.get("targets")
+        if not isinstance(targets, dict):
+            continue
+        for settings in targets.values():
+            if not isinstance(settings, dict):
                 continue
-            if (path.parent / source).resolve() != updater.resolve():
-                continue
-            variables.append(_variable(python.get("parameters")))
+            for job, task, _ in _tasks(settings):
+                key = task.get("task_key")
+                identified = isinstance(key, str) and (job, key) in identities
+                if not identified and _python(path, task, updater) is None:
+                    continue
+                variables.append(None)
     return variables
 
 
-def _tasks(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+def _declared(
+    documents: list[tuple[Path, dict[str, Any]]],
+    variable: str,
+) -> bool:
+    for _, metadata in documents:
+        declarations = metadata.get("variables")
+        if isinstance(declarations, dict) and variable in declarations:
+            return True
+    return False
+
+
+def _value(
+    documents: list[tuple[Path, dict[str, Any]]],
+    target: str,
+    variable: str,
+) -> Any:
+    discovered: list[Any] = []
+    for _, metadata in documents:
+        targets = metadata.get("targets")
+        settings = targets.get(target) if isinstance(targets, dict) else None
+        variables = settings.get("variables") if isinstance(settings, dict) else None
+        if isinstance(variables, dict) and variable in variables:
+            discovered.append(variables[variable])
+    if not discovered or any(value != discovered[0] for value in discovered[1:]):
+        return None
+    return discovered[0]
+
+
+def _documents(
+    bundle: Path,
+    configuration: dict[str, Any],
+) -> list[tuple[Path, dict[str, Any]]]:
+    root = bundle / "databricks.yml"
+    documents = [(root, configuration)]
+    included = configuration.get("include")
+    if not isinstance(included, list):
+        return documents
+
+    discovered = {root.resolve()}
+    for pattern in included:
+        if not isinstance(pattern, str) or Path(pattern).is_absolute():
+            continue
+        for path in sorted(bundle.glob(pattern)):
+            resolved = path.resolve()
+            if not path.is_file() or resolved in discovered:
+                continue
+            discovered.add(resolved)
+            documents.append((path, load_metadata(path)))
+    return documents
+
+
+def _tasks(metadata: dict[str, Any]) -> list[tuple[str, dict[str, Any], bool]]:
     resources = metadata.get("resources")
     jobs = resources.get("jobs") if isinstance(resources, dict) else None
     if not isinstance(jobs, dict):
         return []
 
-    tasks: list[dict[str, Any]] = []
-    for job in jobs.values():
+    tasks: list[tuple[str, dict[str, Any], bool]] = []
+    for name, job in jobs.items():
+        if not isinstance(name, str):
+            continue
         configured = job.get("tasks") if isinstance(job, dict) else None
         if not isinstance(configured, list):
             continue
-        tasks.extend(task for task in configured if isinstance(task, dict))
+        for task in configured:
+            if not isinstance(task, dict):
+                continue
+            tasks.append((name, task, False))
+            loop = task.get("for_each_task")
+            nested = loop.get("task") if isinstance(loop, dict) else None
+            if isinstance(nested, dict):
+                tasks.append((name, nested, True))
     return tasks
+
+
+def _python(path: Path, task: dict[str, Any], updater: Path) -> dict[str, Any] | None:
+    python = task.get("spark_python_task")
+    if not isinstance(python, dict):
+        return None
+    source = python.get("python_file")
+    if not isinstance(source, str):
+        return None
+    if (path.parent / source).resolve() != updater.resolve():
+        return None
+    return python
 
 
 def _variable(parameters: Any) -> str | None:
@@ -180,6 +265,18 @@ def _variable(parameters: Any) -> str | None:
         return None
     match = VARIABLE.fullmatch(value)
     return match.group(1) if match is not None else None
+
+
+def _seeds(directory: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in directory.rglob("*.json")
+        if "fixtures" not in path.relative_to(directory).parts
+    )
+
+
+def _canonical(table: str) -> str:
+    return DELIMITED.sub(r"\1\2", table).casefold()
 
 
 def _display(root: Path, path: Path) -> str:

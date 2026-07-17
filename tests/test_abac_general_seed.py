@@ -5,7 +5,7 @@ import sys
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
@@ -165,6 +165,10 @@ def test_seed_rejects_invalid_document(
             {"expires_at": "2026-01-01T00:00:00Z"},
             "expires_at must be later than valid_from",
         ),
+        (
+            {"expires_at": "2025-12-31T16:00:00-08:00"},
+            "expires_at must be later than valid_from",
+        ),
     ],
 )
 def test_seed_rejects_invalid_row_values(
@@ -221,6 +225,20 @@ def test_seed_rejects_duplicate_principal_group_key(
         seed.load(path)
 
 
+def test_seed_allows_reuse_of_each_compound_key_component(
+    seed: ModuleType,
+    tmp_path: Path,
+) -> None:
+    another_group = deepcopy(row())
+    another_group["okta_group_name"] = "engineering-readers"
+    another_principal = deepcopy(row())
+    another_principal["effective_principal"] = "another@example.com"
+    path = tmp_path / "okta-group.json"
+    write(path, [row(), another_group, another_principal])
+
+    assert len(seed.load(path).rows) == 3
+
+
 class Result:
     def __init__(self) -> None:
         self.collected = False
@@ -254,6 +272,21 @@ class Session:
     def sql(self, query: str, args: dict[str, str]) -> Result:
         self.queries.append((query, args))
         return self.result
+
+
+def test_update_uses_exact_mapping_table_schema(update: ModuleType) -> None:
+    assert [
+        tuple(line.strip().rstrip(",").split())
+        for line in update.SCHEMA.splitlines()
+        if line.strip()
+    ] == [
+        ("effective_principal", "STRING"),
+        ("okta_group_name", "STRING"),
+        ("access_level", "STRING"),
+        ("is_active", "BOOLEAN"),
+        ("valid_from", "TIMESTAMP"),
+        ("expires_at", "TIMESTAMP"),
+    ]
 
 
 def test_update_performs_one_parameterized_authoritative_overwrite(
@@ -298,17 +331,36 @@ def test_update_derives_seed_from_its_map_directory(update: ModuleType) -> None:
     assert update.source(MAP) == MAP / "okta-group.json"
 
 
-def test_update_loads_without_file_global(
+def test_update_main_executes_without_file_global(
     seed: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    session = Session()
+    spark = ModuleType("pyspark")
+    sql = ModuleType("pyspark.sql")
+    sql.SparkSession = SimpleNamespace(
+        builder=SimpleNamespace(getOrCreate=lambda: session),
+    )
+    spark.sql = sql
     monkeypatch.setitem(sys.modules, "seed", seed)
+    monkeypatch.setitem(sys.modules, "pyspark", spark)
+    monkeypatch.setitem(sys.modules, "pyspark.sql", sql)
     monkeypatch.chdir(MAP)
-    scope: dict[str, Any] = {"__name__": "okta_group_update_runtime"}
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(UPDATE), "--table", "security.access.okta_group"],
+    )
+    scope: dict[str, Any] = {"__name__": "__main__"}
 
     exec(compile(UPDATE.read_bytes(), str(UPDATE), "exec"), scope)
 
-    assert scope["source"](Path.cwd()) == MAP / "okta-group.json"
+    assert session.rows
+    assert len(session.queries) == 1
+    assert session.queries[0][1] == {"table": "security.access.okta_group"}
+    assert session.result.collected is True
+    assert f"seed={MAP / 'okta-group.json'}" in capsys.readouterr().out
 
 
 def test_update_rejects_invalid_seed_before_spark_interaction(
@@ -344,3 +396,26 @@ def test_update_propagates_the_single_write_failure(
         update.execute(session, "security.access.okta_group", path)
 
     assert len(session.queries) == 1
+
+
+def test_update_propagates_deferred_write_failure_without_success_log(
+    update: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class Failed(Result):
+        def collect(self) -> list[object]:
+            self.collected = True
+            raise RuntimeError("write failed during collection")
+
+    path = tmp_path / "okta-group.json"
+    write(path, [row()])
+    session = Session()
+    session.result = Failed()
+
+    with pytest.raises(RuntimeError, match="write failed during collection"):
+        update.execute(session, "security.access.okta_group", path)
+
+    assert len(session.queries) == 1
+    assert session.result.collected is True
+    assert "updated=" not in capsys.readouterr().out

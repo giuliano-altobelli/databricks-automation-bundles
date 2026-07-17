@@ -185,8 +185,8 @@ def test_okta_group_resource_runs_preflight_apply_and_update() -> None:
 
     resource = load_metadata(RESOURCE)
     jobs = resource["resources"]["jobs"]
-    assert len(jobs) == 1
-    job = next(iter(jobs.values()))
+    assert set(jobs) == {"okta_group"}
+    job = jobs["okta_group"]
     assert job["name"] == "apply_abac_okta_group_access"
     assert job["max_concurrent_runs"] == 1
     assert job["environments"] == [
