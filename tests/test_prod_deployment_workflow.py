@@ -36,6 +36,20 @@ def executable_commands(shell_text: str) -> list[str]:
     ]
 
 
+def recipe(text: str, name: str) -> list[str]:
+    lines = text.splitlines()
+    start = lines.index(f"{name}:") + 1
+    commands: list[str] = []
+
+    for line in lines[start:]:
+        if line and not line.startswith((" ", "\t")):
+            break
+        if line.strip():
+            commands.append(line.strip())
+
+    return commands
+
+
 def test_prod_workflow_triggers_only_on_push_to_main() -> None:
     parsed = workflow()
     triggers = parsed.get("on") or parsed.get(True)
@@ -81,14 +95,6 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     assert checkout_step["with"]["fetch-depth"] == 0
 
     run_steps = [step for step in verify["steps"] if "run" in step]
-    assert [step["run"] for step in run_steps[:-1]] == [
-        "uv sync --locked --all-extras --dev",
-        "uv run pytest -q",
-        "uv run ruff check tools tests",
-        "uv run prek -c prek.toml run --all-files",
-        "uv run repoctl discover",
-        "uv run repoctl validate",
-    ]
 
     changed_step = run_steps[-1]
     assert changed_step["env"] == {
@@ -98,6 +104,19 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     assert '[[ -z "$CHANGED_BASE" || "$CHANGED_BASE" =~ ^0+$ ]]' in changed_step["run"]
     assert 'CHANGED_BASE="$CHANGED_FALLBACK"' in changed_step["run"]
     assert 'uv run repoctl changed --base "$CHANGED_BASE"' in changed_step["run"]
+
+    justfile = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    local = recipe(justfile, "verify")
+    changed = next(
+        command
+        for command in executable_commands(changed_step["run"])
+        if command.startswith("uv run repoctl changed")
+    )
+    actual = [
+        *(step["run"] for step in run_steps[:-1]),
+        changed.replace('"$CHANGED_BASE"', "HEAD"),
+    ]
+    assert actual == ["uv sync --locked --all-extras --dev", *local]
 
 
 def test_prod_deploy_jobs_parameterize_both_collections() -> None:

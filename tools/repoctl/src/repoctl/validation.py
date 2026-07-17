@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from repoctl import seed
 from repoctl.discovery import discover
 
 
@@ -32,6 +33,8 @@ def validate_repo(root: Path) -> ValidationResult:
         errors.extend(
             _validate_bundle(root, bundle.path, bundle.metadata_path, bundle.metadata)
         )
+
+    errors.extend(seed.check(root, result.bundles))
 
     return ValidationResult(ok=not errors, errors=errors)
 

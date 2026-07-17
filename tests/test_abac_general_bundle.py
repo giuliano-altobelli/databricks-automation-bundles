@@ -16,6 +16,8 @@ CONFIGURATION = BUNDLE / "databricks.yml"
 PREFLIGHT = BUNDLE / "sql" / "preflight.sql"
 APPLY = MAP / "apply.sql"
 FILTER = MAP / "filter.sql"
+SEED = MAP / "okta-group.json"
+UPDATE = MAP / "update.py"
 
 APPLY_PARAMETERS = {"access_map_table_fqn", "policy_udf_fqn"}
 PREFLIGHT_PARAMETERS = {"access_map_schema_fqn", "policy_schema_fqn"}
@@ -84,21 +86,28 @@ def test_repoctl_discovers_and_classifies_general_collection() -> None:
         "prod": {"mode": "production", "ci_only": True},
     }
 
-    changed = classify_changed_files(
-        ROOT, [(MAP / "apply.sql").relative_to(ROOT).as_posix()]
-    )
-    assert changed.docs_only is False
-    assert changed.affects_all_bundles is False
-    assert changed.changed_bundles == [BUNDLE]
+    for path in (APPLY, SEED):
+        changed = classify_changed_files(ROOT, [path.relative_to(ROOT).as_posix()])
+        assert changed.docs_only is False
+        assert changed.affects_all_bundles is False
+        assert changed.changed_bundles == [BUNDLE]
 
 
 def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
     configuration = load_metadata(CONFIGURATION)
 
-    assert set(configuration) == {"bundle", "include", "variables", "targets"}
+    assert set(configuration) == {"bundle", "include", "sync", "variables", "targets"}
     assert configuration["bundle"]["name"] == "abac-general-access"
     assert configuration["bundle"]["databricks_cli_version"] == ">= 1.7.0"
     assert configuration["include"] == ["resources/*.yml"]
+    assert configuration["sync"] == {
+        "include": [
+            "maps/okta-group/okta-group.json",
+            "maps/okta-group/seed.py",
+            "maps/okta-group/update.py",
+        ],
+        "exclude": ["maps/*/fixtures/"],
+    }
     assert set(configuration["variables"]) == (
         APPLY_PARAMETERS
         | PREFLIGHT_PARAMETERS
@@ -158,7 +167,7 @@ def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
         )
 
 
-def test_okta_group_resource_runs_only_preflight_and_apply() -> None:
+def test_okta_group_resource_runs_preflight_apply_and_update() -> None:
     assert {path.name for path in (BUNDLE / "resources").glob("*.yml")} == {
         "okta-group.yml"
     }
@@ -167,6 +176,8 @@ def test_okta_group_resource_runs_only_preflight_and_apply() -> None:
         "preflight.sql"
     }
     assert {path.name for path in MAP.glob("*.sql")} == {"apply.sql", "filter.sql"}
+    assert SEED.is_file()
+    assert UPDATE.is_file()
     assert {path.name for path in (MAP / "fixtures").glob("*.json")} == {
         "cases.json",
         "rows.json",
@@ -174,15 +185,22 @@ def test_okta_group_resource_runs_only_preflight_and_apply() -> None:
 
     resource = load_metadata(RESOURCE)
     jobs = resource["resources"]["jobs"]
-    assert len(jobs) == 1
-    job = next(iter(jobs.values()))
+    assert set(jobs) == {"okta_group"}
+    job = jobs["okta_group"]
     assert job["name"] == "apply_abac_okta_group_access"
     assert job["max_concurrent_runs"] == 1
+    assert job["environments"] == [
+        {
+            "environment_key": "seed",
+            "spec": {"environment_version": "2"},
+        }
+    ]
 
     tasks = {task["task_key"]: task for task in job["tasks"]}
     assert set(tasks) == {
         "preflight_target_schemas",
         "apply_abac_okta_group_access",
+        "update_abac_okta_group_access",
     }
     assert "depends_on" not in tasks["preflight_target_schemas"]
     assert tasks["preflight_target_schemas"]["sql_task"]["file"] == {
@@ -206,10 +224,20 @@ def test_okta_group_resource_runs_only_preflight_and_apply() -> None:
     assert application["sql_task"]["parameters"] == {
         name: f"${{var.{name}}}" for name in APPLY_PARAMETERS
     }
-    assert all(
-        task["sql_task"]["file"]["path"] != "../maps/okta-group/filter.sql"
+
+    update = tasks["update_abac_okta_group_access"]
+    assert update["depends_on"] == [{"task_key": "apply_abac_okta_group_access"}]
+    assert update["environment_key"] == "seed"
+    assert update["spark_python_task"] == {
+        "python_file": "../maps/okta-group/update.py",
+        "parameters": ["--table", "${var.access_map_table_fqn}"],
+    }
+    sql = {
+        task["sql_task"]["file"]["path"]
         for task in tasks.values()
-    )
+        if "sql_task" in task
+    }
+    assert "../maps/okta-group/filter.sql" not in sql
 
 
 def test_preflight_is_read_only_and_checks_both_target_schemas() -> None:
@@ -318,7 +346,7 @@ def test_filter_is_the_production_terraform_predicate_with_one_column_input() ->
     assert ":" not in predicate
 
 
-def test_bundle_does_not_attach_filters_or_populate_the_mapping_table() -> None:
+def test_sql_tasks_do_not_attach_filters_or_populate_the_mapping_table() -> None:
     executable = normalized(read(APPLY) + "\n" + read(PREFLIGHT))
 
     for statement in (

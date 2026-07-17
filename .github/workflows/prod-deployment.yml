@@ -29,7 +29,7 @@ jobs:
         run: uv run pytest -q
 
       - name: Run ruff
-        run: uv run ruff check tools tests
+        run: uv run ruff check projects tools tests
 
       - name: Run prek
         run: uv run prek -c prek.toml run --all-files

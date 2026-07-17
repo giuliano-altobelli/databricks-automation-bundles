@@ -26,7 +26,7 @@ def test_root_justfile_exposes_bootstrap_and_verify_recipes() -> None:
     ]
     assert recipe_commands(justfile_text, "verify") == [
         "uv run pytest -q",
-        "uv run ruff check tools tests",
+        "uv run ruff check projects tools tests",
         "uv run prek -c prek.toml run --all-files",
         "uv run repoctl discover",
         "uv run repoctl validate",
