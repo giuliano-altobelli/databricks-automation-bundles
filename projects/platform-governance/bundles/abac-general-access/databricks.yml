@@ -5,6 +5,14 @@ bundle:
 include:
   - resources/*.yml
 
+sync:
+  include:
+    - maps/okta-group/okta-group.json
+    - maps/okta-group/seed.py
+    - maps/okta-group/update.py
+  exclude:
+    - maps/*/fixtures/
+
 variables:
   access_map_schema_fqn:
     description: Fully qualified schema containing the Okta-group access map.

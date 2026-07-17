@@ -84,7 +84,7 @@ def test_prod_workflow_verifies_before_entering_prod_environment() -> None:
     assert [step["run"] for step in run_steps[:-1]] == [
         "uv sync --locked --all-extras --dev",
         "uv run pytest -q",
-        "uv run ruff check tools tests",
+        "uv run ruff check projects tools tests",
         "uv run prek -c prek.toml run --all-files",
         "uv run repoctl discover",
         "uv run repoctl validate",
