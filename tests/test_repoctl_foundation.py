@@ -114,6 +114,42 @@ def test_validate_accepts_an_existing_repository_relative_library(
     assert result.errors == []
 
 
+def test_validate_rejects_the_repository_root_as_a_shared_library(
+    tmp_path: Path,
+) -> None:
+    bundle = write_foundation_fixture(tmp_path)
+    metadata = load_metadata(bundle / "bundle.yaml")
+    metadata["depends_on"]["libs"] = ["."]
+    write_json_yaml(bundle / "bundle.yaml", metadata)
+
+    validation = validate_repo(tmp_path)
+
+    assert validation.ok is False
+    assert "must reference a canonical repository subdirectory" in "\n".join(
+        validation.errors
+    )
+
+
+def test_validate_rejects_a_shared_library_symlink_alias(
+    tmp_path: Path,
+) -> None:
+    bundle = write_foundation_fixture(tmp_path)
+    shared = tmp_path / "projects" / "platform-governance" / "bundles" / "abac"
+    shared.mkdir()
+    alias = tmp_path / "abac"
+    alias.symlink_to(shared.relative_to(tmp_path), target_is_directory=True)
+    metadata = load_metadata(bundle / "bundle.yaml")
+    metadata["depends_on"]["libs"] = ["abac"]
+    write_json_yaml(bundle / "bundle.yaml", metadata)
+
+    validation = validate_repo(tmp_path)
+
+    assert validation.ok is False
+    assert "must reference a canonical repository subdirectory" in "\n".join(
+        validation.errors
+    )
+
+
 @pytest.mark.parametrize(
     ("library", "message"),
     (

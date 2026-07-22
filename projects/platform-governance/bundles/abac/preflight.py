@@ -58,6 +58,18 @@ def inputs(definition: Definition, location: Location) -> list[Issue]:
         errors.append(
             Issue("scope", f"phase one requires CATALOG, found {definition.scope}")
         )
+    if definition.target != "TABLE":
+        errors.append(
+            Issue("target", f"phase one requires TABLE, found {definition.target}")
+        )
+    if definition.kind != "POLICY_TYPE_ROW_FILTER":
+        errors.append(
+            Issue(
+                "kind",
+                "phase one requires POLICY_TYPE_ROW_FILTER, "
+                f"found {definition.kind}",
+            )
+        )
     if len(location.schema.split(".")) != 2 or any(
         not part for part in location.schema.split(".")
     ):

@@ -184,9 +184,12 @@ def _validate_library(root: Path, display_path: str, library: str) -> list[str]:
         return [f"{resource} must be repository-relative without parent traversal"]
 
     repository = root.resolve()
-    destination = (root / path).resolve()
+    source = repository / path
+    destination = source.resolve()
     if not destination.is_relative_to(repository):
         return [f"{resource} must remain inside the repository"]
+    if destination == repository or destination != source:
+        return [f"{resource} must reference a canonical repository subdirectory"]
     if not destination.is_dir():
         return [f"{resource} must reference an existing directory"]
     return []

@@ -472,6 +472,34 @@ def test_preflight_rejects_an_unrenderable_definition_before_remote_reads(
     assert workspace.events == []
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "resource", "required"),
+    (
+        ("kind", "POLICY_TYPE_COLUMN_MASK", "kind", "POLICY_TYPE_ROW_FILTER"),
+        ("target", "SCHEMA", "target", "TABLE"),
+    ),
+)
+def test_preflight_rejects_a_valid_unsupported_policy_shape_before_remote_reads(
+    field: str,
+    value: str,
+    resource: str,
+    required: str,
+    policy: ModuleType,
+    okta: ModuleType,
+    preflight: ModuleType,
+) -> None:
+    workspace = Workspace()
+    definition = replace(okta.POLICY, **{field: value})
+
+    with pytest.raises(preflight.Invalid) as captured:
+        preflight.validate(workspace, definition, location(policy))
+
+    assert captured.value.errors[0].resource == resource
+    assert value in captured.value.errors[0].message
+    assert required in captured.value.errors[0].message
+    assert workspace.events == []
+
+
 def test_preflight_rejects_a_non_catalog_policy_scope_before_remote_reads(
     policy: ModuleType,
     okta: ModuleType,
