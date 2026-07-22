@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from client import Client, workspace
-from policy import Location, Tag, desired
+from client import Client
+from definition import Definition, Location, Tag
+from render import information
 
 
 @dataclass(frozen=True)
@@ -17,18 +17,17 @@ class Issue:
         return f"{self.resource}: {self.message}"
 
 
-class ValidationError(RuntimeError):
+class Invalid(RuntimeError):
     def __init__(self, errors: list[Issue]) -> None:
         self.errors = tuple(errors)
         super().__init__("\n".join(str(error) for error in errors))
 
 
-def validate(client: Client, location: Location) -> None:
-    local = inputs(location)
+def validate(client: Client, definition: Definition, location: Location) -> None:
+    local = inputs(definition, location)
     if local:
-        raise ValidationError(local)
+        raise Invalid(local)
 
-    definition = desired(location)
     errors: list[Issue] = []
     if location.catalog is not None:
         read(
@@ -46,11 +45,19 @@ def validate(client: Client, location: Location) -> None:
         for tag in tags:
             governed(errors, client, tag)
     if errors:
-        raise ValidationError(errors)
+        raise Invalid(errors)
 
 
-def inputs(location: Location) -> list[Issue]:
+def inputs(definition: Definition, location: Location) -> list[Issue]:
     errors: list[Issue] = []
+    try:
+        information(definition, location, True)
+    except (TypeError, ValueError) as error:
+        errors.append(Issue("definition", str(error)))
+    if definition.scope != "CATALOG":
+        errors.append(
+            Issue("scope", f"phase one requires CATALOG, found {definition.scope}")
+        )
     if len(location.schema.split(".")) != 2 or any(
         not part for part in location.schema.split(".")
     ):
@@ -59,6 +66,8 @@ def inputs(location: Location) -> list[Issue]:
         "." in location.catalog or not location.catalog
     ):
         errors.append(Issue("catalog", "must be a one-part nonempty name"))
+    if "." in definition.filter.function or not definition.filter.function:
+        errors.append(Issue("function", "must be a one-part nonempty name"))
     return errors
 
 
@@ -92,18 +101,3 @@ def governed(errors: list[Issue], client: Client, tag: Tag) -> None:
                 f"allowed value {tag.value} does not exist",
             )
         )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--schema", required=True)
-    parser.add_argument("--catalog")
-    arguments = parser.parse_args()
-    location = Location(catalog=arguments.catalog, schema=arguments.schema)
-    validate(workspace(), location)
-    catalog = location.catalog if location.catalog is not None else "none"
-    print(f"validated schema={location.schema} catalog={catalog}")
-
-
-if __name__ == "__main__":
-    main()

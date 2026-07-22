@@ -1,4 +1,8 @@
+import os
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from repoctl.changes import classify_changed_files
@@ -6,20 +10,26 @@ from repoctl.discovery import discover
 from repoctl.metadata import load_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
+BUNDLES = ROOT / "projects" / "platform-governance" / "bundles"
 BUNDLE = (
-    ROOT / "projects" / "platform-governance" / "bundles" / "abac-general-access"
+    BUNDLES / "abac-general-access"
 )
+ABAC = BUNDLES / "abac"
 MAP = BUNDLE / "maps" / "okta-group"
 RESOURCE = BUNDLE / "resources" / "okta-group.yml"
 METADATA = BUNDLE / "repoctl.bundle.yaml"
 CONFIGURATION = BUNDLE / "databricks.yml"
 PROJECT = ROOT / "pyproject.toml"
 APPLY = MAP / "apply.sql"
-CLIENT = MAP / "client.py"
-POLICY = MAP / "policy.py"
-PREFLIGHT = MAP / "preflight.py"
-RECONCILE = MAP / "reconcile.py"
-SCRIPTS = {CLIENT, POLICY, PREFLIGHT, RECONCILE}
+CLIENT = ABAC / "client.py"
+COMMAND = ABAC / "command.py"
+DEFINITION = ABAC / "definition.py"
+OKTA = ABAC / "okta.py"
+PREFLIGHT = ABAC / "preflight.py"
+RECONCILE = ABAC / "reconcile.py"
+RENDER = ABAC / "render.py"
+STATE = ABAC / "state.py"
+SCRIPTS = {CLIENT, COMMAND, DEFINITION, OKTA, PREFLIGHT, RECONCILE, RENDER, STATE}
 
 
 def read(path: Path) -> str:
@@ -38,6 +48,14 @@ def tasks(job: dict[str, object]) -> dict[str, dict[str, object]]:
     return {task["task_key"]: task for task in job["tasks"]}
 
 
+def source(owner: Path, path: str) -> Path:
+    return (owner.parent / path).resolve()
+
+
+def covered(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(path.is_relative_to(root) for root in roots)
+
+
 def test_repoctl_discovers_and_classifies_general_collection() -> None:
     discovery = discover(ROOT)
     bundle = next(item for item in discovery.bundles if item.path == BUNDLE)
@@ -51,12 +69,29 @@ def test_repoctl_discovers_and_classifies_general_collection() -> None:
         "uat": {"mode": "production", "ci_only": True},
         "prod": {"mode": "production", "ci_only": True},
     }
+    assert bundle.metadata["depends_on"]["libs"] == [
+        "projects/platform-governance/bundles/abac"
+    ]
+    consumers = sorted(
+        item.path
+        for item in discovery.bundles
+        if ABAC.relative_to(ROOT).as_posix()
+        in item.metadata["depends_on"]["libs"]
+    )
+    assert BUNDLE in consumers
+    assert all(path.name != "foundation-smoke" for path in consumers)
 
-    for path in {APPLY} | SCRIPTS:
+    for path in {APPLY}:
         changed = classify_changed_files(ROOT, [path.relative_to(ROOT).as_posix()])
         assert changed.docs_only is False
         assert changed.affects_all_bundles is False
         assert changed.changed_bundles == [BUNDLE]
+
+    for path in SCRIPTS:
+        changed = classify_changed_files(ROOT, [path.relative_to(ROOT).as_posix()])
+        assert changed.docs_only is False
+        assert changed.affects_all_bundles is False
+        assert changed.changed_bundles == consumers
 
 
 def test_native_bundle_exposes_only_deployment_location() -> None:
@@ -74,14 +109,7 @@ def test_native_bundle_exposes_only_deployment_location() -> None:
         "databricks_cli_version": ">= 1.7.0",
     }
     assert configuration["include"] == ["resources/*.yml"]
-    assert configuration["sync"] == {
-        "include": [
-            "maps/okta-group/client.py",
-            "maps/okta-group/policy.py",
-            "maps/okta-group/preflight.py",
-            "maps/okta-group/reconcile.py",
-        ]
-    }
+    assert configuration["sync"] == {"paths": [".", "../abac"]}
     assert set(configuration["variables"]) == {
         "location",
         "sql_warehouse_id",
@@ -132,11 +160,17 @@ def test_dev_job_validates_schema_then_applies_only_the_udf() -> None:
     assert not (BUNDLE / "sql").exists()
     assert {path.name for path in MAP.iterdir() if path.is_file()} == {
         "apply.sql",
+    }
+    assert {
         "client.py",
-        "policy.py",
+        "command.py",
+        "definition.py",
+        "okta.py",
         "preflight.py",
         "reconcile.py",
-    }
+        "render.py",
+        "state.py",
+    }.issubset({path.name for path in ABAC.iterdir() if path.is_file()})
 
     resource = load_metadata(RESOURCE)
     job = resource["resources"]["jobs"]["okta_group"]
@@ -158,8 +192,12 @@ def test_dev_job_validates_schema_then_applies_only_the_udf() -> None:
     assert graph["preflight"] == {
         "task_key": "preflight",
         "spark_python_task": {
-            "python_file": "../maps/okta-group/preflight.py",
-            "parameters": ["--schema", "${var.location.schema}"],
+            "python_file": "../../abac/okta.py",
+            "parameters": [
+                "preflight",
+                "--schema",
+                "${var.location.schema}",
+            ],
         },
         "environment_key": "policy",
     }
@@ -175,6 +213,14 @@ def test_dev_job_validates_schema_then_applies_only_the_udf() -> None:
             "parameters": {"schema": "${var.location.schema}"},
         },
     }
+    configuration = load_metadata(CONFIGURATION)
+    roots = tuple((BUNDLE / path).resolve() for path in configuration["sync"]["paths"])
+    preflight = source(RESOURCE, graph["preflight"]["spark_python_task"]["python_file"])
+    apply = source(RESOURCE, graph["apply"]["sql_task"]["file"]["path"])
+    assert preflight == OKTA
+    assert apply == APPLY
+    assert covered(preflight, roots)
+    assert covered(apply, roots)
 
 
 def test_shared_targets_add_catalog_validation_and_policy_reconciliation() -> None:
@@ -202,20 +248,22 @@ def test_shared_targets_add_catalog_validation_and_policy_reconciliation() -> No
             base["preflight"]["spark_python_task"]["parameters"]
             + graph["preflight"]["spark_python_task"]["parameters"]
         ) == [
+            "preflight",
             "--schema",
             "${var.location.schema}",
             "--catalog",
             "${var.location.catalog}",
         ]
         assert base["preflight"]["spark_python_task"]["python_file"] == (
-            "../maps/okta-group/preflight.py"
+            "../../abac/okta.py"
         )
         assert graph["reconcile"] == {
             "task_key": "reconcile",
             "depends_on": [{"task_key": "apply"}],
             "spark_python_task": {
-                "python_file": "maps/okta-group/reconcile.py",
+                "python_file": "../abac/okta.py",
                 "parameters": [
+                    "reconcile",
                     "--schema",
                     "${var.location.schema}",
                     "--catalog",
@@ -224,7 +272,69 @@ def test_shared_targets_add_catalog_validation_and_policy_reconciliation() -> No
             },
             "environment_key": "policy",
         }
+        roots = tuple(
+            (BUNDLE / path).resolve()
+            for path in configuration["sync"]["paths"]
+        )
+        reconciler = source(
+            CONFIGURATION,
+            graph["reconcile"]["spark_python_task"]["python_file"],
+        )
+        assert reconciler == OKTA
+        assert covered(reconciler, roots)
         assert catalog in {"dev_abac_demo", "prod_abac_demo"}
+
+
+def test_shared_policy_entrypoint_accepts_only_operation_and_location(
+    tmp_path: Path,
+) -> None:
+    staged = tmp_path / "abac"
+    outside = tmp_path / "outside"
+    shutil.copytree(ABAC, staged)
+    outside.mkdir()
+    environment = os.environ.copy()
+    environment.pop("PYTHONHOME", None)
+    environment.pop("PYTHONPATH", None)
+
+    for operation in ("preflight", "reconcile"):
+        completed = subprocess.run(
+            [sys.executable, str(staged / "okta.py"), operation, "--help"],
+            cwd=outside,
+            check=True,
+            capture_output=True,
+            env=environment,
+            text=True,
+        )
+        assert "--schema" in completed.stdout
+        assert "--catalog" in completed.stdout
+        for forbidden in (
+            "--definition",
+            "--name",
+            "--principal",
+            "--condition",
+            "--function",
+        ):
+            assert forbidden not in completed.stdout
+
+
+def test_abac_maps_do_not_copy_the_shared_policy_layout() -> None:
+    forbidden = {path.name for path in SCRIPTS} | {"policy.py"}
+    collections = (
+        bundle
+        for bundle in discover(ROOT).bundles
+        if bundle.metadata["type"] == "abac-access-collection"
+    )
+
+    for bundle in collections:
+        maps = bundle.path / "maps"
+        if not maps.exists():
+            continue
+        duplicated = sorted(
+            path.relative_to(bundle.path).as_posix()
+            for path in maps.rglob("*.py")
+            if path.name in forbidden
+        )
+        assert duplicated == [], bundle.name
 
 
 def test_apply_sql_defines_only_the_derived_policy_udf() -> None:
@@ -285,7 +395,11 @@ def test_bundle_contains_no_terraform_policy_predicate_or_policy_sql() -> None:
 
 
 def test_bundle_does_not_embed_authentication_credentials() -> None:
-    text = "\n".join(read(path) for path in {CONFIGURATION, RESOURCE} | SCRIPTS)
+    shared = set(ABAC.glob("*.py"))
+    assert SCRIPTS.issubset(shared)
+    text = "\n".join(
+        read(path) for path in {CONFIGURATION, RESOURCE} | shared
+    )
     lowered = text.lower()
 
     for forbidden in (

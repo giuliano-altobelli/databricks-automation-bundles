@@ -5,53 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from databricks.sdk.service.catalog import (
-    FunctionArgument,
-    MatchColumn,
-    PolicyInfo,
-    PolicyType,
-    RowFilterOptions,
-    SecurableType,
-)
-
-
-@dataclass(frozen=True)
-class Location:
-    catalog: str | None
-    schema: str
-
-
-@dataclass(frozen=True)
-class Tag:
-    key: str
-    value: str
-
-
-@dataclass(frozen=True)
-class Match:
-    tag: Tag
-    alias: str
-
-
-@dataclass(frozen=True)
-class Filter:
-    function: str
-    using: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class Definition:
-    name: str
-    comment: str
-    scope: str
-    catalog: str | None
-    target: str
-    kind: str
-    principals: tuple[str, ...]
-    exceptions: tuple[str, ...]
-    condition: Tag
-    matches: tuple[Match, ...]
-    filter: Filter
+from definition import Tag
+from render import expression
 
 
 @dataclass(frozen=True)
@@ -66,13 +21,6 @@ class Snapshot:
     matches: tuple[tuple[str | None, str | None], ...]
     filter: tuple[str | None, tuple[tuple[str | None, str | None], ...]] | None
     mask: object
-
-
-@dataclass(frozen=True)
-class Result:
-    action: str
-    identity: tuple[str, str, str]
-    fields: tuple[str, ...]
 
 
 COUPLED = ("policy_type", "row_filter", "column_mask")
@@ -92,63 +40,6 @@ TAG = re.compile(
     r"'(?P<value>(?:''|[^'])*)'\s*\)\s*$",
     re.IGNORECASE,
 )
-
-
-def desired(location: Location) -> Definition:
-    return Definition(
-        name="abac_demo_okta_group_row_filter",
-        comment=(
-            "Filter governed demo rows by the querying user's Okta group membership."
-        ),
-        scope="CATALOG",
-        catalog=location.catalog,
-        target="TABLE",
-        kind="POLICY_TYPE_ROW_FILTER",
-        principals=("okta-databricks-users",),
-        exceptions=("giulianoaltobelli@gmail.com",),
-        condition=Tag(
-            key="abac_boundary",
-            value="abac_general_access_okta_group",
-        ),
-        matches=(
-            Match(
-                tag=Tag(key="protected_column", value="okta_group_names"),
-                alias="okta_group_names_value",
-            ),
-        ),
-        filter=Filter(
-            function=f"{location.schema}.can_read_okta_group",
-            using=("okta_group_names_value",),
-        ),
-    )
-
-
-def expression(tag: Tag) -> str:
-    key = tag.key.replace("'", "''")
-    value = tag.value.replace("'", "''")
-    return f"has_tag_value('{key}','{value}')"
-
-
-def information(definition: Definition, identity: bool) -> PolicyInfo:
-    return PolicyInfo(
-        to_principals=list(definition.principals),
-        for_securable_type=SecurableType(definition.target),
-        policy_type=PolicyType(definition.kind),
-        comment=definition.comment,
-        except_principals=list(definition.exceptions),
-        match_columns=[
-            MatchColumn(alias=match.alias, condition=expression(match.tag))
-            for match in definition.matches
-        ],
-        name=definition.name if identity else None,
-        on_securable_fullname=definition.catalog if identity else None,
-        on_securable_type=SecurableType(definition.scope) if identity else None,
-        row_filter=RowFilterOptions(
-            function_name=definition.filter.function,
-            using=[FunctionArgument(alias=alias) for alias in definition.filter.using],
-        ),
-        when_condition=expression(definition.condition),
-    )
 
 
 def scalar(value: object) -> str | None:

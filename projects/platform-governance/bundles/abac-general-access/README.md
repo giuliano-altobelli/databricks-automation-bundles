@@ -1,9 +1,9 @@
 # ABAC General Access Collection
 
-This Databricks Asset Bundle owns the Okta-group row-filter function and the
-complete `abac_demo_okta_group_row_filter` ABAC policy definition. Terraform
-continues to own the destination catalogs and schemas, but does not own this
-policy.
+This Databricks Asset Bundle owns the Okta-group row-filter function and uses
+the shared, complete `abac_demo_okta_group_row_filter` ABAC policy definition.
+Terraform continues to own the destination catalogs and schemas, but does not
+own this policy.
 
 ## Target Matrix
 
@@ -16,6 +16,28 @@ policy.
 The complex bundle variable `location` contains only these deployment
 locations. Policy behavior is not exposed through bundle variables, job
 parameters, or run-time overrides.
+
+## Shared Policy Boundary
+
+Reusable ABAC policy machinery lives once in the sibling `../abac` source
+root. `../abac/okta.py` contains the single frozen Okta policy definition and
+is the direct entrypoint for both preflight and reconciliation. Its only
+command inputs are the checked-in lifecycle operation and deployment location.
+No module path, policy name, function, principals, conditions, or tags can be
+selected at run time.
+
+The remaining shared files separate the SDK client boundary, immutable policy
+types, SDK request rendering, remote-state comparison, dependency validation,
+and reconciliation. A new policy supplies one immutable entrypoint definition
+to this shared runtime instead of copying that source layout into its map.
+Phase one deliberately rejects policy scopes other than `CATALOG`; supporting a
+schema-scoped policy will require a separate target-securable location model.
+
+The map remains responsible only for `apply.sql`, which defines its function.
+The bundle synchronizes both its local root and `../abac` using Databricks
+shared bundle paths. Its repository metadata declares the shared source as a
+library dependency so changes to the runtime select this consuming bundle for
+CI deployment.
 
 ## Deployment
 
@@ -44,7 +66,8 @@ All validation failures are aggregated and fail the job. Missing dependencies,
 unreadable dependencies, and API failures all prevent the function and policy
 tasks from running.
 
-The reconciler uses `databricks-sdk==0.121.0` and the public ABAC policy API:
+The shared reconciler uses `databricks-sdk==0.121.0` and the public ABAC policy
+API:
 
 - A missing policy is created from the complete checked-in definition.
 - An equal policy is left unchanged.

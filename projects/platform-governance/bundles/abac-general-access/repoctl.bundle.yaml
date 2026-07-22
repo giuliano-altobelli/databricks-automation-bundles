@@ -18,4 +18,5 @@ targets:
     ci_only: true
 depends_on:
   bundles: []
-  libs: []
+  libs:
+    - projects/platform-governance/bundles/abac

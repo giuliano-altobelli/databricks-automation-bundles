@@ -96,6 +96,58 @@ def test_validate_accepts_minimal_foundation_metadata(tmp_path: Path) -> None:
     assert result.errors == []
 
 
+def test_validate_accepts_an_existing_repository_relative_library(
+    tmp_path: Path,
+) -> None:
+    bundle = write_foundation_fixture(tmp_path)
+    shared = tmp_path / "projects" / "platform-governance" / "bundles" / "abac"
+    shared.mkdir()
+    metadata = load_metadata(bundle / "bundle.yaml")
+    metadata["depends_on"]["libs"] = [
+        "projects/platform-governance/bundles/abac"
+    ]
+    write_json_yaml(bundle / "bundle.yaml", metadata)
+
+    result = validate_repo(tmp_path)
+
+    assert result.ok is True
+    assert result.errors == []
+
+
+@pytest.mark.parametrize(
+    ("library", "message"),
+    (
+        ("", "must be non-empty"),
+        ("   ", "must be non-empty"),
+        ("/absolute/abac", "must be repository-relative without parent traversal"),
+        (
+            "projects/platform-governance/bundles/../abac",
+            "must be repository-relative without parent traversal",
+        ),
+        (
+            "projects/platform-governance/bundles/missing",
+            "must reference an existing directory",
+        ),
+    ),
+)
+def test_validate_rejects_an_invalid_shared_library(
+    tmp_path: Path,
+    library: str,
+    message: str,
+) -> None:
+    bundle = write_foundation_fixture(tmp_path)
+    metadata = load_metadata(bundle / "bundle.yaml")
+    metadata["depends_on"]["libs"] = [library]
+    write_json_yaml(bundle / "bundle.yaml", metadata)
+
+    result = validate_repo(tmp_path)
+
+    assert result.ok is False
+    errors = "\n".join(result.errors)
+    assert "depends_on.libs" in errors
+    assert message in errors
+
+
 def test_active_bundle_schema_declares_dev_uat_prod_lifecycle() -> None:
     schema = json.loads((ROOT / "schemas" / "bundle.schema.json").read_text(encoding="utf-8"))
     targets = schema["properties"]["targets"]
@@ -277,6 +329,86 @@ def test_classify_changed_files_maps_bundle_local_changes(tmp_path: Path) -> Non
     assert result.docs_only is False
     assert result.affects_all_bundles is False
     assert result.changed_bundles == [bundle_root]
+
+
+def test_classify_changed_files_maps_shared_libraries_to_declared_consumers(
+    tmp_path: Path,
+) -> None:
+    bundle_root = write_foundation_fixture(tmp_path)
+    metadata = load_metadata(bundle_root / "bundle.yaml")
+    metadata["depends_on"]["libs"] = [
+        "projects/platform-governance/bundles/abac"
+    ]
+    write_json_yaml(bundle_root / "bundle.yaml", metadata)
+
+    result = classify_changed_files(
+        tmp_path,
+        ["projects/platform-governance/bundles/abac/reconcile.py"],
+    )
+
+    assert result.docs_only is False
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == [bundle_root]
+
+
+def test_classify_changed_files_maps_a_shared_library_to_every_declared_consumer(
+    tmp_path: Path,
+) -> None:
+    first = write_foundation_fixture(tmp_path)
+    shared = tmp_path / "projects" / "platform-governance" / "bundles" / "abac"
+    shared.mkdir()
+    metadata = load_metadata(first / "bundle.yaml")
+    metadata["depends_on"]["libs"] = [
+        "projects/platform-governance/bundles/abac"
+    ]
+    write_json_yaml(first / "bundle.yaml", metadata)
+    second = first.parent / "second-smoke"
+    metadata["name"] = "second-smoke"
+    write_json_yaml(second / "bundle.yaml", metadata)
+
+    result = classify_changed_files(
+        tmp_path,
+        ["projects/platform-governance/bundles/abac/reconcile.py"],
+    )
+
+    assert result.docs_only is False
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == [first, second]
+
+
+def test_classify_changed_files_does_not_match_a_library_name_prefix(
+    tmp_path: Path,
+) -> None:
+    bundle = write_foundation_fixture(tmp_path)
+    metadata = load_metadata(bundle / "bundle.yaml")
+    metadata["depends_on"]["libs"] = [
+        "projects/platform-governance/bundles/abac"
+    ]
+    write_json_yaml(bundle / "bundle.yaml", metadata)
+
+    result = classify_changed_files(
+        tmp_path,
+        ["projects/platform-governance/bundles/abacus/reconcile.py"],
+    )
+
+    assert result.docs_only is False
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == []
+
+
+def test_classify_changed_files_ignores_undeclared_shared_libraries(
+    tmp_path: Path,
+) -> None:
+    write_foundation_fixture(tmp_path)
+
+    result = classify_changed_files(
+        tmp_path,
+        ["projects/platform-governance/bundles/abac/reconcile.py"],
+    )
+
+    assert result.docs_only is False
+    assert result.affects_all_bundles is False
+    assert result.changed_bundles == []
 
 
 def test_classify_changed_files_keeps_root_app_changes_non_deploying(tmp_path: Path) -> None:

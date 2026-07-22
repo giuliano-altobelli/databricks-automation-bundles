@@ -6,11 +6,9 @@ include:
   - resources/*.yml
 
 sync:
-  include:
-    - maps/okta-group/client.py
-    - maps/okta-group/policy.py
-    - maps/okta-group/preflight.py
-    - maps/okta-group/reconcile.py
+  paths:
+    - .
+    - ../abac
 
 variables:
   location:
@@ -54,8 +52,9 @@ targets:
               depends_on:
                 - task_key: apply
               spark_python_task:
-                python_file: maps/okta-group/reconcile.py
+                python_file: ../abac/okta.py
                 parameters:
+                  - reconcile
                   - --schema
                   - ${var.location.schema}
                   - --catalog
@@ -84,8 +83,9 @@ targets:
               depends_on:
                 - task_key: apply
               spark_python_task:
-                python_file: maps/okta-group/reconcile.py
+                python_file: ../abac/okta.py
                 parameters:
+                  - reconcile
                   - --schema
                   - ${var.location.schema}
                   - --catalog

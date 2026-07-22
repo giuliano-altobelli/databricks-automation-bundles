@@ -6,8 +6,9 @@ resources:
       tasks:
         - task_key: preflight
           spark_python_task:
-            python_file: ../maps/okta-group/preflight.py
+            python_file: ../../abac/okta.py
             parameters:
+              - preflight
               - --schema
               - ${var.location.schema}
           environment_key: policy

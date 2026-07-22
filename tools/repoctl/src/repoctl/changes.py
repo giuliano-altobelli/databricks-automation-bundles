@@ -63,6 +63,13 @@ def classify_changed_files(root: Path, changed_files: list[str]) -> ChangedResul
         if _is_project_metadata_change(changed_file, bundle.path.relative_to(root).parents[1])
     )
 
+    changed_bundles.update(
+        bundle.path
+        for bundle in discovered.bundles
+        for changed_file in normalized
+        if _is_declared_library_change(changed_file, bundle.metadata)
+    )
+
     return ChangedResult(
         changed_files=normalized,
         changed_bundles=sorted(changed_bundles),
@@ -86,3 +93,27 @@ def _is_inside_bundle(changed_file: str, bundle_path: Path) -> bool:
 
 def _is_project_metadata_change(changed_file: str, project_path: Path) -> bool:
     return changed_file == (project_path / "project.yaml").as_posix()
+
+
+def _is_declared_library_change(changed_file: str, metadata: dict[str, object]) -> bool:
+    dependencies = metadata.get("depends_on")
+    if not isinstance(dependencies, dict):
+        return False
+    libraries = dependencies.get("libs")
+    if not isinstance(libraries, list):
+        return False
+    return any(
+        _is_inside_library(changed_file, library)
+        for library in libraries
+        if isinstance(library, str)
+    )
+
+
+def _is_inside_library(changed_file: str, library: str) -> bool:
+    path = Path(library)
+    if path.is_absolute() or ".." in path.parts:
+        return False
+    prefix = path.as_posix().strip("/")
+    return bool(prefix) and (
+        changed_file == prefix or changed_file.startswith(prefix + "/")
+    )

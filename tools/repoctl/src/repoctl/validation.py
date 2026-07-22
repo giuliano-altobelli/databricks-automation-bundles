@@ -82,7 +82,7 @@ def _validate_bundle(
     errors.extend(_validate_owner(display_path, metadata.get("owner")))
     errors.extend(_validate_review(display_path, metadata.get("review")))
     errors.extend(_validate_targets(display_path, metadata.get("targets")))
-    errors.extend(_validate_depends_on(display_path, metadata.get("depends_on")))
+    errors.extend(_validate_depends_on(root, display_path, metadata.get("depends_on")))
     return errors
 
 
@@ -155,7 +155,7 @@ def _validate_targets(display_path: str, targets: Any) -> list[str]:
     return errors
 
 
-def _validate_depends_on(display_path: str, depends_on: Any) -> list[str]:
+def _validate_depends_on(root: Path, display_path: str, depends_on: Any) -> list[str]:
     if not isinstance(depends_on, dict):
         return [f"{display_path} depends_on must be a mapping"]
 
@@ -166,7 +166,30 @@ def _validate_depends_on(display_path: str, depends_on: Any) -> list[str]:
         value = depends_on.get(key)
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             errors.append(f"{display_path} depends_on.{key} must be a list of strings")
+    libraries = depends_on.get("libs")
+    if isinstance(libraries, list):
+        for library in libraries:
+            if isinstance(library, str):
+                errors.extend(_validate_library(root, display_path, library))
     return errors
+
+
+def _validate_library(root: Path, display_path: str, library: str) -> list[str]:
+    resource = f"{display_path} depends_on.libs path {library!r}"
+    if not library.strip():
+        return [f"{resource} must be non-empty"]
+
+    path = Path(library)
+    if path.is_absolute() or ".." in path.parts:
+        return [f"{resource} must be repository-relative without parent traversal"]
+
+    repository = root.resolve()
+    destination = (root / path).resolve()
+    if not destination.is_relative_to(repository):
+        return [f"{resource} must remain inside the repository"]
+    if not destination.is_dir():
+        return [f"{resource} must reference an existing directory"]
+    return []
 
 
 def _is_non_empty_string(value: Any) -> bool:
