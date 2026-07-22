@@ -5,13 +5,19 @@ bundle:
 include:
   - resources/*.yml
 
+sync:
+  include:
+    - maps/okta-group/client.py
+    - maps/okta-group/policy.py
+    - maps/okta-group/preflight.py
+    - maps/okta-group/reconcile.py
+
 variables:
-  policy_schema_fqn:
-    description: Fully qualified schema containing the Okta-group policy UDF.
-  policy_udf_fqn:
-    description: Fully qualified Okta-group policy UDF name.
+  location:
+    description: Catalog and schema where this collection is deployed.
+    type: complex
   sql_warehouse_id:
-    description: Existing serverless SQL warehouse used by the preflight and apply tasks.
+    description: Existing serverless SQL warehouse used by the function task.
   run_as_service_principal_name:
     description: Application ID of the shared-target deployment service principal.
     default: ${workspace.current_user.userName}
@@ -23,8 +29,8 @@ targets:
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
-      policy_schema_fqn: personal.${workspace.current_user.short_name}
-      policy_udf_fqn: personal.${workspace.current_user.short_name}.can_read_okta_group
+      location:
+        schema: personal.${workspace.current_user.short_name}
   uat:
     mode: production
     workspace:
@@ -32,8 +38,29 @@ targets:
     run_as:
       service_principal_name: ${var.run_as_service_principal_name}
     variables:
-      policy_schema_fqn: dev_security.policies
-      policy_udf_fqn: dev_security.policies.can_read_okta_group
+      location:
+        schema: dev_security.policies
+        catalog: dev_abac_demo
+    resources:
+      jobs:
+        okta_group:
+          tasks:
+            - task_key: preflight
+              spark_python_task:
+                parameters:
+                  - --catalog
+                  - ${var.location.catalog}
+            - task_key: reconcile
+              depends_on:
+                - task_key: apply
+              spark_python_task:
+                python_file: maps/okta-group/reconcile.py
+                parameters:
+                  - --schema
+                  - ${var.location.schema}
+                  - --catalog
+                  - ${var.location.catalog}
+              environment_key: policy
   prod:
     mode: production
     workspace:
@@ -41,5 +68,26 @@ targets:
     run_as:
       service_principal_name: ${var.run_as_service_principal_name}
     variables:
-      policy_schema_fqn: prod_security.policies
-      policy_udf_fqn: prod_security.policies.can_read_okta_group
+      location:
+        schema: prod_security.policies
+        catalog: prod_abac_demo
+    resources:
+      jobs:
+        okta_group:
+          tasks:
+            - task_key: preflight
+              spark_python_task:
+                parameters:
+                  - --catalog
+                  - ${var.location.catalog}
+            - task_key: reconcile
+              depends_on:
+                - task_key: apply
+              spark_python_task:
+                python_file: maps/okta-group/reconcile.py
+                parameters:
+                  - --schema
+                  - ${var.location.schema}
+                  - --catalog
+                  - ${var.location.catalog}
+              environment_key: policy

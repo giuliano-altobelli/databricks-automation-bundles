@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION IDENTIFIER(:policy_udf_fqn) (
+CREATE OR REPLACE FUNCTION IDENTIFIER(:schema || '.can_read_okta_group') (
   okta_group_names ARRAY<STRING>
 )
 RETURNS BOOLEAN

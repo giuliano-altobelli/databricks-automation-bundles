@@ -13,6 +13,7 @@ repoctl = "repoctl.cli:main"
 
 [dependency-groups]
 dev = [
+    "databricks-sdk==0.121.0",
     "prek>=0.2.0",
     "pytest>=8.0",
     "ruff>=0.8.0",

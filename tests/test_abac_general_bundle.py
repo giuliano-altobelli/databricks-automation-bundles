@@ -13,12 +13,13 @@ MAP = BUNDLE / "maps" / "okta-group"
 RESOURCE = BUNDLE / "resources" / "okta-group.yml"
 METADATA = BUNDLE / "repoctl.bundle.yaml"
 CONFIGURATION = BUNDLE / "databricks.yml"
-PREFLIGHT = BUNDLE / "sql" / "preflight.sql"
+PROJECT = ROOT / "pyproject.toml"
 APPLY = MAP / "apply.sql"
-FILTER = MAP / "filter.sql"
-
-APPLY_PARAMETERS = {"policy_udf_fqn"}
-PREFLIGHT_PARAMETERS = {"policy_schema_fqn"}
+CLIENT = MAP / "client.py"
+POLICY = MAP / "policy.py"
+PREFLIGHT = MAP / "preflight.py"
+RECONCILE = MAP / "reconcile.py"
+SCRIPTS = {CLIENT, POLICY, PREFLIGHT, RECONCILE}
 
 
 def read(path: Path) -> str:
@@ -31,6 +32,10 @@ def uncommented(sql: str) -> str:
 
 def normalized(sql: str) -> str:
     return re.sub(r"\s+", " ", uncommented(sql)).strip().lower()
+
+
+def tasks(job: dict[str, object]) -> dict[str, dict[str, object]]:
+    return {task["task_key"]: task for task in job["tasks"]}
 
 
 def test_repoctl_discovers_and_classifies_general_collection() -> None:
@@ -47,151 +52,191 @@ def test_repoctl_discovers_and_classifies_general_collection() -> None:
         "prod": {"mode": "production", "ci_only": True},
     }
 
-    for path in (APPLY, FILTER):
+    for path in {APPLY} | SCRIPTS:
         changed = classify_changed_files(ROOT, [path.relative_to(ROOT).as_posix()])
         assert changed.docs_only is False
         assert changed.affects_all_bundles is False
         assert changed.changed_bundles == [BUNDLE]
 
 
-def test_native_bundle_has_exact_targets_and_general_destinations() -> None:
+def test_native_bundle_exposes_only_deployment_location() -> None:
     configuration = load_metadata(CONFIGURATION)
 
-    assert set(configuration) == {"bundle", "include", "variables", "targets"}
-    assert configuration["bundle"]["name"] == "abac-general-access"
-    assert configuration["bundle"]["databricks_cli_version"] == ">= 1.7.0"
+    assert set(configuration) == {
+        "bundle",
+        "include",
+        "sync",
+        "variables",
+        "targets",
+    }
+    assert configuration["bundle"] == {
+        "name": "abac-general-access",
+        "databricks_cli_version": ">= 1.7.0",
+    }
     assert configuration["include"] == ["resources/*.yml"]
-    assert set(configuration["variables"]) == (
-        APPLY_PARAMETERS
-        | PREFLIGHT_PARAMETERS
-        | {"sql_warehouse_id", "run_as_service_principal_name"}
-    )
-    assert set(configuration["targets"]) == {"dev", "uat", "prod"}
+    assert configuration["sync"] == {
+        "include": [
+            "maps/okta-group/client.py",
+            "maps/okta-group/policy.py",
+            "maps/okta-group/preflight.py",
+            "maps/okta-group/reconcile.py",
+        ]
+    }
+    assert set(configuration["variables"]) == {
+        "location",
+        "sql_warehouse_id",
+        "run_as_service_principal_name",
+    }
+    assert configuration["variables"]["location"]["type"] == "complex"
 
-    destinations = {
-        "dev": {
-            "policy_schema_fqn": "personal.${workspace.current_user.short_name}",
-            "policy_udf_fqn": (
-                "personal.${workspace.current_user.short_name}."
-                "can_read_okta_group"
-            ),
-        },
-        "uat": {
-            "policy_schema_fqn": "dev_security.policies",
-            "policy_udf_fqn": "dev_security.policies.can_read_okta_group",
-        },
+    locations = {
+        "dev": {"schema": "personal.${workspace.current_user.short_name}"},
+        "uat": {"schema": "dev_security.policies", "catalog": "dev_abac_demo"},
         "prod": {
-            "policy_schema_fqn": "prod_security.policies",
-            "policy_udf_fqn": "prod_security.policies.can_read_okta_group",
+            "schema": "prod_security.policies",
+            "catalog": "prod_abac_demo",
         },
     }
-    for target, expected in destinations.items():
-        assert configuration["targets"][target]["variables"] == expected
+    for target, location in locations.items():
+        assert configuration["targets"][target]["variables"] == {
+            "location": location
+        }
 
-    assert configuration["targets"]["dev"]["mode"] == "development"
-    assert configuration["targets"]["dev"]["default"] is True
-    assert "run_as" not in configuration["targets"]["dev"]
-    assert configuration["targets"]["dev"]["workspace"]["root_path"] == (
+    dev = configuration["targets"]["dev"]
+    assert dev["mode"] == "development"
+    assert dev["default"] is True
+    assert "run_as" not in dev
+    assert "resources" not in dev
+    assert dev["workspace"]["root_path"] == (
         "/Workspace/Users/${workspace.current_user.userName}/.bundle/"
         "${bundle.name}/${bundle.target}"
     )
 
     for target in ("uat", "prod"):
-        assert configuration["targets"][target]["mode"] == "production"
-        assert configuration["targets"][target]["run_as"] == {
+        shared = configuration["targets"][target]
+        assert shared["mode"] == "production"
+        assert shared["run_as"] == {
             "service_principal_name": "${var.run_as_service_principal_name}"
         }
-        assert configuration["targets"][target]["workspace"]["root_path"] == (
+        assert shared["workspace"]["root_path"] == (
             "/Workspace/Users/${var.run_as_service_principal_name}/.bundle/"
             "${bundle.name}/${bundle.target}"
         )
 
 
-def test_okta_group_resource_runs_preflight_and_apply() -> None:
+def test_dev_job_validates_schema_then_applies_only_the_udf() -> None:
     assert {path.name for path in (BUNDLE / "resources").glob("*.yml")} == {
         "okta-group.yml"
     }
     assert {path.name for path in (BUNDLE / "maps").iterdir()} == {"okta-group"}
-    assert {path.name for path in (BUNDLE / "sql").glob("*.sql")} == {
-        "preflight.sql"
-    }
+    assert not (BUNDLE / "sql").exists()
     assert {path.name for path in MAP.iterdir() if path.is_file()} == {
         "apply.sql",
-        "filter.sql",
+        "client.py",
+        "policy.py",
+        "preflight.py",
+        "reconcile.py",
     }
-    assert not (MAP / "fixtures").exists()
 
     resource = load_metadata(RESOURCE)
-    jobs = resource["resources"]["jobs"]
-    assert set(jobs) == {"okta_group"}
-    job = jobs["okta_group"]
+    job = resource["resources"]["jobs"]["okta_group"]
     assert job["name"] == "apply_abac_okta_group_policy"
     assert job["max_concurrent_runs"] == 1
-    assert "environments" not in job
+    assert job["environments"] == [
+        {
+            "environment_key": "policy",
+            "spec": {
+                "environment_version": "2",
+                "dependencies": ["databricks-sdk==0.121.0"],
+            },
+        }
+    ]
+    assert read(PROJECT).count('"databricks-sdk==0.121.0"') == 1
 
-    tasks = {task["task_key"]: task for task in job["tasks"]}
-    assert set(tasks) == {
-        "preflight",
-        "apply",
+    graph = tasks(job)
+    assert set(graph) == {"preflight", "apply"}
+    assert graph["preflight"] == {
+        "task_key": "preflight",
+        "spark_python_task": {
+            "python_file": "../maps/okta-group/preflight.py",
+            "parameters": ["--schema", "${var.location.schema}"],
+        },
+        "environment_key": "policy",
     }
-    assert "depends_on" not in tasks["preflight"]
-    assert tasks["preflight"]["sql_task"]["file"] == {
-        "path": "../sql/preflight.sql",
-        "source": "WORKSPACE",
-    }
-    assert tasks["preflight"]["sql_task"]["warehouse_id"] == (
-        "${var.sql_warehouse_id}"
-    )
-    assert tasks["preflight"]["sql_task"]["parameters"] == {
-        name: f"${{var.{name}}}" for name in PREFLIGHT_PARAMETERS
-    }
-
-    application = tasks["apply"]
-    assert application["depends_on"] == [{"task_key": "preflight"}]
-    assert application["sql_task"]["file"] == {
-        "path": "../maps/okta-group/apply.sql",
-        "source": "WORKSPACE",
-    }
-    assert application["sql_task"]["warehouse_id"] == "${var.sql_warehouse_id}"
-    assert application["sql_task"]["parameters"] == {
-        name: f"${{var.{name}}}" for name in APPLY_PARAMETERS
+    assert graph["apply"] == {
+        "task_key": "apply",
+        "depends_on": [{"task_key": "preflight"}],
+        "sql_task": {
+            "file": {
+                "path": "../maps/okta-group/apply.sql",
+                "source": "WORKSPACE",
+            },
+            "warehouse_id": "${var.sql_warehouse_id}",
+            "parameters": {"schema": "${var.location.schema}"},
+        },
     }
 
-    sql = {
-        task["sql_task"]["file"]["path"]
-        for task in tasks.values()
-        if "sql_task" in task
-    }
-    assert "../maps/okta-group/filter.sql" not in sql
+
+def test_shared_targets_add_catalog_validation_and_policy_reconciliation() -> None:
+    configuration = load_metadata(CONFIGURATION)
+    resource = load_metadata(RESOURCE)
+    base = tasks(resource["resources"]["jobs"]["okta_group"])
+
+    for target in ("uat", "prod"):
+        catalog = configuration["targets"][target]["variables"]["location"][
+            "catalog"
+        ]
+        job = configuration["targets"][target]["resources"]["jobs"]["okta_group"]
+        graph = tasks(job)
+        assert set(graph) == {"preflight", "reconcile"}
+        assert graph["preflight"] == {
+            "task_key": "preflight",
+            "spark_python_task": {
+                "parameters": [
+                    "--catalog",
+                    "${var.location.catalog}",
+                ],
+            },
+        }
+        assert (
+            base["preflight"]["spark_python_task"]["parameters"]
+            + graph["preflight"]["spark_python_task"]["parameters"]
+        ) == [
+            "--schema",
+            "${var.location.schema}",
+            "--catalog",
+            "${var.location.catalog}",
+        ]
+        assert base["preflight"]["spark_python_task"]["python_file"] == (
+            "../maps/okta-group/preflight.py"
+        )
+        assert graph["reconcile"] == {
+            "task_key": "reconcile",
+            "depends_on": [{"task_key": "apply"}],
+            "spark_python_task": {
+                "python_file": "maps/okta-group/reconcile.py",
+                "parameters": [
+                    "--schema",
+                    "${var.location.schema}",
+                    "--catalog",
+                    "${var.location.catalog}",
+                ],
+            },
+            "environment_key": "policy",
+        }
+        assert catalog in {"dev_abac_demo", "prod_abac_demo"}
 
 
-def test_preflight_is_read_only_and_checks_policy_schema() -> None:
-    sql = read(PREFLIGHT)
-    executable = normalized(sql)
-
-    assert set(re.findall(r":([a-z_]+)", uncommented(sql))) == PREFLIGHT_PARAMETERS
-    assert len(re.findall(r"\bdescribe\s+schema\s+identifier\b", executable)) == 1
-    assert sum(line.rstrip().endswith(";") for line in sql.splitlines()) == 1
-    for keyword in (
-        "alter",
-        "create",
-        "delete",
-        "drop",
-        "insert",
-        "merge",
-        "replace",
-        "truncate",
-        "update",
-    ):
-        assert not re.search(rf"\b{keyword}\b", executable)
-
-
-def test_apply_sql_defines_only_policy_udf() -> None:
+def test_apply_sql_defines_only_the_derived_policy_udf() -> None:
     sql = read(APPLY)
     executable = normalized(sql)
 
-    assert set(re.findall(r":([a-z_]+)", uncommented(sql))) == APPLY_PARAMETERS
+    assert set(re.findall(r":([a-z_]+)", uncommented(sql))) == {"schema"}
     assert len(re.findall(r"\bcreate\s+or\s+replace\s+function\b", executable)) == 1
+    assert re.search(
+        r"identifier\s*\(\s*:schema\s*\|\|\s*'\.can_read_okta_group'\s*\)",
+        executable,
+    )
     assert not re.search(r"\bcreate\s+table\b", executable)
     assert "access_map" not in executable
 
@@ -201,7 +246,7 @@ def test_okta_group_udf_requires_every_scim_account_group_and_fails_closed() -> 
 
     assert re.search(
         r"create\s+or\s+replace\s+function\s+"
-        r"identifier\s*\(\s*:policy_udf_fqn\s*\)\s*"
+        r"identifier\s*\(\s*:schema\s*\|\|\s*'\.can_read_okta_group'\s*\)\s*"
         r"\(\s*okta_group_names\s+array\s*<\s*string\s*>\s*\)\s*"
         r"returns\s+boolean",
         executable,
@@ -225,29 +270,29 @@ def test_okta_group_udf_requires_every_scim_account_group_and_fails_closed() -> 
     )
 
 
-def test_filter_is_the_production_terraform_predicate_with_one_column_input() -> None:
-    predicate = normalized(read(FILTER)).rstrip(";")
+def test_bundle_contains_no_terraform_policy_predicate_or_policy_sql() -> None:
+    assert not (MAP / "filter.sql").exists()
+    assert not list(BUNDLE.rglob("*.sql")) == []
 
-    assert predicate == (
-        "prod_security.policies.can_read_okta_group(okta_group_names)"
-    )
-    assert "identifier" not in predicate
-    assert ":" not in predicate
-
-
-def test_sql_tasks_do_not_attach_filters_or_manage_access_maps() -> None:
-    executable = normalized(read(APPLY) + "\n" + read(PREFLIGHT))
-
+    executable = normalized("\n".join(read(path) for path in BUNDLE.rglob("*.sql")))
     for statement in (
         r"\balter\s+table\b",
-        r"\bcreate\s+table\b",
-        r"\bdrop\s+table\b",
+        r"\bcreate\s+policy\b",
+        r"\bdrop\s+policy\b",
         r"\bset\s+row\s+filter\b",
-        r"\binsert\s+into\b",
-        r"\bmerge\s+into\b",
-        r"\bupdate\b",
-        r"\bdelete\s+from\b",
-        r"\bcopy\s+into\b",
-        r"\btruncate\s+table\b",
     ):
         assert not re.search(statement, executable)
+
+
+def test_bundle_does_not_embed_authentication_credentials() -> None:
+    text = "\n".join(read(path) for path in {CONFIGURATION, RESOURCE} | SCRIPTS)
+    lowered = text.lower()
+
+    for forbidden in (
+        "client_secret",
+        "databricks_token",
+        "personal access token",
+        "dbc-86214b5d-e911",
+        "dbc-cc553e0d-3fbe",
+    ):
+        assert forbidden not in lowered

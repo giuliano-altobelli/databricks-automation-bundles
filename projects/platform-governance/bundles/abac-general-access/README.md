@@ -1,53 +1,89 @@
 # ABAC General Access Collection
 
-This Databricks Asset Bundle deploys the SQL policy function used to authorize
-rows tagged with required Okta account groups. Okta provisions the groups and
-their users to Databricks through SCIM, so the bundle does not maintain a
-separate access-map table or seed.
+This Databricks Asset Bundle owns the Okta-group row-filter function and the
+complete `abac_demo_okta_group_row_filter` ABAC policy definition. Terraform
+continues to own the destination catalogs and schemas, but does not own this
+policy.
+
+## Target Matrix
+
+| Target | Function schema | Policy scope |
+| --- | --- | --- |
+| `dev` | `personal.<current-user-short-name>` | None |
+| `uat` | `dev_security.policies` | Catalog `dev_abac_demo` |
+| `prod` | `prod_security.policies` | Catalog `prod_abac_demo` |
+
+The complex bundle variable `location` contains only these deployment
+locations. Policy behavior is not exposed through bundle variables, job
+parameters, or run-time overrides.
 
 ## Deployment
 
-The `okta_group` job first verifies the destination policy schema and then
-creates or replaces `maps/okta-group/apply.sql` on a serverless SQL warehouse.
-It creates or updates only one function per target:
+The `dev` job graph is:
 
-- `dev`: `personal.<current-user-short-name>.can_read_okta_group`
-- `uat`: `dev_security.policies.can_read_okta_group`
-- `prod`: `prod_security.policies.can_read_okta_group`
+```text
+preflight -> apply
+```
 
-The bundle does not create catalogs, schemas, mapping tables, or seed data. It
-also does not attach row filters or manage the Terraform-owned production
-policy rollout.
+It validates the personal function schema and creates or replaces only
+`can_read_okta_group`.
 
-Targets pass the complete function name through `policy_udf_fqn` and the apply
-SQL references it with `IDENTIFIER(:policy_udf_fqn)`. The read-only preflight
-uses `policy_schema_fqn`. Both tasks use the existing warehouse passed through
-`sql_warehouse_id`.
+The `uat` and `prod` graph is:
+
+```text
+preflight -> apply -> reconcile
+```
+
+Before the first mutation, preflight verifies that the destination function
+schema, policy catalog, and these governed tag dependencies already exist:
+
+- `abac_boundary=abac_general_access_okta_group`
+- `protected_column=okta_group_names`
+
+All validation failures are aggregated and fail the job. Missing dependencies,
+unreadable dependencies, and API failures all prevent the function and policy
+tasks from running.
+
+The reconciler uses `databricks-sdk==0.121.0` and the public ABAC policy API:
+
+- A missing policy is created from the complete checked-in definition.
+- An equal policy is left unchanged.
+- Mutable drift is repaired with `update_policy` and an explicit field mask.
+- Every create or update is followed by an exact read and convergence check.
+- An identity mismatch returned by an exact read fails as an explicit migration.
+
+The controller does not list, delete, prune, or move policies. If function
+replacement succeeds and policy reconciliation fails, the failed run is safe
+to repeat. Because policy scope is part of the API lookup key, changing a
+target catalog requires a reviewed migration; the controller cannot discover a
+same-named policy stranded in a previous catalog.
 
 ## Policy Contract
 
-The policy UDF receives the protected row's `okta_group_names` array. Every
-non-null group name must identify an account-level group containing the
-connected user according to `is_account_group_member`. This includes indirect
-membership resolved by Unity Catalog.
+The policy applies to tables in its target catalog when the table has
+`abac_boundary=abac_general_access_okta_group`. It matches the protected column
+tagged `protected_column=okta_group_names`, aliases that column as
+`okta_group_names_value`, and passes it to the target-specific
+`can_read_okta_group` function.
 
-A null array or null array element fails closed. An empty array returns true,
-so rows without an Okta-group restriction remain visible. Group membership is
-evaluated from the Databricks identity synchronized by SCIM rather than from a
-bundle-owned authorization snapshot.
+The policy applies to `okta-databricks-users` except
+`giulianoaltobelli@gmail.com`.
 
-`maps/okta-group/filter.sql` is the production Terraform predicate contract:
+The function requires every non-null group name in the protected row to be an
+account-level group containing the connected user according to
+`is_account_group_member`. A null array or null element fails closed. An empty
+array returns true.
 
-```sql
-prod_security.policies.can_read_okta_group(okta_group_names)
-```
+## Terraform Cutover
 
-The Databricks job never executes this file.
+Terraform must remove its UAT policy before the first UAT bundle run. After UAT
+convergence is verified, Terraform must remove its production policy before the
+first production bundle run. No zero-policy-gap migration is required.
 
 ## Local Development
 
-Use an attended Databricks CLI profile for the sandbox workspace and provide
-the existing serverless SQL warehouse without committing it:
+Use an attended Databricks CLI profile and provide the existing serverless SQL
+warehouse without committing it:
 
 ```bash
 export BUNDLE_VAR_sql_warehouse_id="<sandbox-sql-warehouse-id>"
@@ -57,8 +93,7 @@ databricks bundle deploy -t dev -p sandbox-infra
 databricks bundle run -t dev -p sandbox-infra okta_group
 ```
 
-The `dev` target uses the authenticated developer and writes the UDF to that
-developer's `personal` schema. CI must not deploy this target.
+The local target never creates or reconciles an ABAC policy.
 
 ## CI Authentication
 
@@ -68,6 +103,6 @@ provides `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, and
 `DATABRICKS_SQL_WAREHOUSE_ID`.
 
 The caller repository provides `DATABRICKS_UAT_CLIENT_SECRET` and
-`DATABRICKS_PROD_CLIENT_SECRET` as repository secrets. The deployment service
-principal is also passed as `BUNDLE_VAR_run_as_service_principal_name`, giving
-shared jobs and SQL-created objects a stable run identity and deployment root.
+`DATABRICKS_PROD_CLIENT_SECRET`. The deployment service principal is passed as
+`BUNDLE_VAR_run_as_service_principal_name`, giving the shared job and created
+objects a stable run identity and deployment root.
